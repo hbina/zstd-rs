@@ -172,13 +172,17 @@ impl BlockDecoder {
             raw_literals,
             &mut workspace.literals_buffer,
         )?;
-        assert!(
-            section.regenerated_size == workspace.literals_buffer.len() as u32,
+        assert_eq!(
+            section.regenerated_size,
+            workspace.literals_buffer.len() as u32,
             "Wrong number of literals: {}, Should have been: {}",
             workspace.literals_buffer.len(),
             section.regenerated_size
         );
-        assert!(bytes_used_in_literals_section == upper_limit_for_literals as u32);
+        assert_eq!(
+            bytes_used_in_literals_section,
+            upper_limit_for_literals as u32
+        );
 
         let raw = &raw[upper_limit_for_literals..];
         vprintln!("Slice for sequences with headers: {}", raw.len());

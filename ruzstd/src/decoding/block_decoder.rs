@@ -8,8 +8,7 @@ use super::sequence_section_decoder::decode_sequences;
 use crate::common::MAX_BLOCK_SIZE;
 use crate::decoding::errors::DecodeSequenceError;
 use crate::decoding::errors::{
-    BlockHeaderReadError, BlockSizeError, BlockTypeError, DecodeBlockContentError,
-    DecompressBlockError,
+    BlockHeaderReadError, BlockSizeError, DecodeBlockContentError, DecompressBlockError,
 };
 use crate::decoding::scratch::DecoderScratch;
 use crate::decoding::sequence_execution::execute_sequences;
@@ -231,7 +230,7 @@ impl BlockDecoder {
     pub fn read_block_header(
         &mut self,
         mut r: impl Read,
-    ) -> Result<(BlockHeader, u8), BlockHeaderReadError> {
+    ) -> Result<BlockHeader, BlockHeaderReadError> {
         //match self.internal_state {
         //    DecoderState::ReadyToDecodeNextHeader => {/* Happy :) */},
         //    DecoderState::Failed => return Err(format!("Cant decode next block if failed along the way. Results will be nonsense")),
@@ -286,15 +285,12 @@ impl BlockDecoder {
         self.internal_state = DecoderState::ReadyToDecodeNextBody;
 
         //just return 3. Blockheaders always take 3 bytes
-        Ok((
-            BlockHeader {
-                last_block,
-                block_type: btype,
-                decompressed_size,
-                content_size,
-            },
-            3,
-        ))
+        Ok(BlockHeader {
+            last_block,
+            block_type: btype,
+            decompressed_size,
+            content_size,
+        })
     }
 
     fn reset_buffer(&mut self) {

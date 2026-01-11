@@ -41,3 +41,7 @@ pub struct BlockHeader {
     /// this value will be 1.
     pub content_size: u32,
 }
+
+impl BlockHeader {
+    pub const SIZE: u64 = 3;
+}

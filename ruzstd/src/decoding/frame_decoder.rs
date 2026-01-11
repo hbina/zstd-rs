@@ -5,6 +5,7 @@
 //! and utilities that can be used to decode a frame.
 
 use super::frame;
+use crate::blocks::block::BlockHeader;
 use crate::decoding;
 use crate::decoding::dictionary::Dictionary;
 use crate::decoding::errors::FrameDecoderError;
@@ -292,10 +293,10 @@ impl FrameDecoder {
             vprintln!("################");
             vprintln!("Next Block: {}", state.block_counter);
             vprintln!("################");
-            let (block_header, block_header_size) = block_dec
+            let block_header = block_dec
                 .read_block_header(&mut source)
                 .map_err(err::FailedToReadBlockHeader)?;
-            state.bytes_read_counter += u64::from(block_header_size);
+            state.bytes_read_counter += u64::from(BlockHeader::SIZE);
 
             vprintln!();
             vprintln!(
@@ -451,7 +452,7 @@ impl FrameDecoder {
                     if mt_source.len() < 3 {
                         break;
                     }
-                    let (block_header, block_header_size) = block_dec
+                    let block_header = block_dec
                         .read_block_header(&mut mt_source)
                         .map_err(err::FailedToReadBlockHeader)?;
 
@@ -460,7 +461,7 @@ impl FrameDecoder {
                     if mt_source.len() < block_header.content_size as usize {
                         break;
                     }
-                    state.bytes_read_counter += u64::from(block_header_size);
+                    state.bytes_read_counter += u64::from(BlockHeader::SIZE);
 
                     let bytes_read_in_block_body = block_dec
                         .decode_block_content(

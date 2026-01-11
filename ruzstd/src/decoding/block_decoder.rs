@@ -16,8 +16,10 @@ use crate::decoding::sequence_execution::execute_sequences;
 use crate::io::Read;
 
 pub struct BlockDecoder {
-    header_buffer: [u8; 3],
     internal_state: DecoderState,
+    last_block: bool,
+    block_type: BlockType,
+    block_content_size: u32,
 }
 
 enum DecoderState {
@@ -31,7 +33,9 @@ enum DecoderState {
 pub fn new() -> BlockDecoder {
     BlockDecoder {
         internal_state: DecoderState::ReadyToDecodeNextHeader,
-        header_buffer: [0u8; 3],
+        last_block: false,
+        block_type: BlockType::Raw,
+        block_content_size: 0,
     }
 }
 
@@ -234,28 +238,49 @@ impl BlockDecoder {
         //    DecoderState::ReadyToDecodeNextBody => return Err(format!("Cant decode next block header, while expecting to decode the body of the previous block. Results will be nonsense")),
         //}
 
-        r.read_exact(&mut self.header_buffer[0..3])?;
+        let mut header_buffer = [0u8; 3];
+        r.read_exact(&mut header_buffer[0..3])?;
 
-        let btype = self.block_type()?;
-        if let BlockType::Reserved = btype {
+        self.last_block = header_buffer[0] & 0x1 == 1;
+        let t = (header_buffer[0] >> 1) & 0x3;
+        self.block_type = match t {
+            0 => BlockType::Raw,
+            1 => BlockType::RLE,
+            2 => BlockType::Compressed,
+            3 => BlockType::Reserved,
+            _ => unreachable!(),
+        };
+
+        self.block_content_size = u32::from(header_buffer[0] >> 3)
+            | (u32::from(header_buffer[1]) << 5)
+            | (u32::from(header_buffer[2]) << 13);
+
+        if let BlockType::Reserved = self.block_type {
             return Err(BlockHeaderReadError::FoundReservedBlock);
         }
 
-        let block_size = self.block_content_size()?;
-        let decompressed_size = match btype {
-            BlockType::Raw => block_size,
-            BlockType::RLE => block_size,
+        if self.block_content_size > MAX_BLOCK_SIZE {
+            return Err(BlockSizeError::BlockSizeTooLarge {
+                size: self.block_content_size,
+            }
+            .into());
+        }
+
+        let decompressed_size = match self.block_type {
+            BlockType::Raw => self.block_content_size,
+            BlockType::RLE => self.block_content_size,
             BlockType::Reserved => 0, //should be caught above, this is an error state
             BlockType::Compressed => 0, //unknown but will be smaller than 128kb (or window_size if that is smaller than 128kb)
         };
-        let content_size = match btype {
-            BlockType::Raw => block_size,
-            BlockType::Compressed => block_size,
+        let content_size = match self.block_type {
+            BlockType::Raw => self.block_content_size,
+            BlockType::Compressed => self.block_content_size,
             BlockType::RLE => 1,
             BlockType::Reserved => 0, //should be caught above, this is an error state
         };
 
-        let last_block = self.is_last();
+        let last_block = self.last_block;
+        let btype = self.block_type;
 
         self.reset_buffer();
         self.internal_state = DecoderState::ReadyToDecodeNextBody;
@@ -273,38 +298,8 @@ impl BlockDecoder {
     }
 
     fn reset_buffer(&mut self) {
-        self.header_buffer[0] = 0;
-        self.header_buffer[1] = 0;
-        self.header_buffer[2] = 0;
-    }
-
-    fn is_last(&self) -> bool {
-        self.header_buffer[0] & 0x1 == 1
-    }
-
-    fn block_type(&self) -> Result<BlockType, BlockTypeError> {
-        let t = (self.header_buffer[0] >> 1) & 0x3;
-        match t {
-            0 => Ok(BlockType::Raw),
-            1 => Ok(BlockType::RLE),
-            2 => Ok(BlockType::Compressed),
-            3 => Ok(BlockType::Reserved),
-            other => Err(BlockTypeError::InvalidBlocktypeNumber { num: other }),
-        }
-    }
-
-    fn block_content_size(&self) -> Result<u32, BlockSizeError> {
-        let val = self.block_content_size_unchecked();
-        if val > MAX_BLOCK_SIZE {
-            Err(BlockSizeError::BlockSizeTooLarge { size: val })
-        } else {
-            Ok(val)
-        }
-    }
-
-    fn block_content_size_unchecked(&self) -> u32 {
-        u32::from(self.header_buffer[0] >> 3) //push out type and last_block flags. Retain 5 bit
-            | (u32::from(self.header_buffer[1]) << 5)
-            | (u32::from(self.header_buffer[2]) << 13)
+        self.last_block = false;
+        self.block_type = BlockType::Raw;
+        self.block_content_size = 0;
     }
 }

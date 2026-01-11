@@ -196,13 +196,10 @@ impl BlockDecoder {
             raw.len()
         );
 
-        assert!(
-            u32::from(bytes_in_literals_header)
-                + bytes_used_in_literals_section
-                + u32::from(bytes_in_sequence_header)
-                + raw.len() as u32
-                == header.content_size
-        );
+        assert_eq!(u32::from(bytes_in_literals_header)
+                       + bytes_used_in_literals_section
+                       + u32::from(bytes_in_sequence_header)
+                       + raw.len() as u32, header.content_size);
         vprintln!("Slice for sequences: {}", raw.len());
 
         if seq_section.num_sequences != 0 {

@@ -104,7 +104,6 @@ pub fn round_trip(data: &[u8]) {
 
     let table_bytes = dec_table.build_decoder(&encoded, acc_log).unwrap();
     let encoded = &encoded[table_bytes..];
-    let mut decoder = FSEDecoder::new(&dec_table);
 
     check_tables(&dec_table, &enc_table);
 
@@ -121,7 +120,7 @@ pub fn round_trip(data: &[u8]) {
         //if more than 7 bits are 0, this is not the correct end of the bitstream. Either a bug or corrupted data
         panic!("Corrupted end marker");
     }
-    decoder.init_state(&mut br).unwrap();
+    let mut decoder = FSEDecoder::new(&dec_table, &mut br).unwrap();
     let mut decoded = alloc::vec::Vec::new();
 
     for x in data {

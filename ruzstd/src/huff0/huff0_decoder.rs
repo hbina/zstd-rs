@@ -167,9 +167,6 @@ impl HuffmanTable {
                 // Huffman headers are compressed using two interleaved
                 // FSE bitstreams, where the first state (decoder) handles
                 // even symbols, and the second handles odd symbols.
-                let mut dec1 = FSEDecoder::new(&self.fse_table);
-                let mut dec2 = FSEDecoder::new(&self.fse_table);
-
                 let compressed_start = bytes_used_by_fse_header;
                 let compressed_length = header as usize - bytes_used_by_fse_header;
 
@@ -199,8 +196,8 @@ impl HuffmanTable {
                     return Err(err::ExtraPadding { skipped_bits });
                 }
 
-                dec1.init_state(&mut br)?;
-                dec2.init_state(&mut br)?;
+                let mut dec1 = FSEDecoder::new(&self.fse_table, &mut br)?;
+                let mut dec2 = FSEDecoder::new(&self.fse_table, &mut br)?;
 
                 self.weights.clear();
 

@@ -10,33 +10,26 @@ pub struct FSEDecoder<'table> {
 }
 
 impl<'t> FSEDecoder<'t> {
-    /// Initialize a new Finite State Entropy decoder.
-    pub fn new(table: &'t FSETable) -> FSEDecoder<'t> {
-        FSEDecoder {
-            state: table.decode.first().copied().unwrap_or(Entry {
-                base_line: 0,
-                num_bits: 0,
-                symbol: 0,
-            }),
-            table,
+    /// Initialize a new Finite State Entropy decoder, reading initial state bits from `bits`.
+    /// `decode_symbol` can immediately be called to read the first symbol, and `update_state`
+    /// can be called to prepare to read the next symbol.
+    pub fn new(
+        table: &'t FSETable,
+        bits: &mut BitReaderReversed<'_>,
+    ) -> Result<FSEDecoder<'t>, FSEDecoderError> {
+        if table.accuracy_log == 0 {
+            return Err(FSEDecoderError::TableIsUninitialized);
         }
+        let new_state = bits.get_bits(table.accuracy_log);
+        Ok(FSEDecoder {
+            state: table.decode[new_state as usize],
+            table,
+        })
     }
 
     /// Returns the byte associated with the symbol the internal cursor is pointing at.
     pub fn decode_symbol(&self) -> u8 {
         self.state.symbol
-    }
-
-    /// Initialize internal state and prepare for decoding. After this, `decode_symbol` can be called
-    /// to read the first symbol and `update_state` can be called to prepare to read the next symbol.
-    pub fn init_state(&mut self, bits: &mut BitReaderReversed<'_>) -> Result<(), FSEDecoderError> {
-        if self.table.accuracy_log == 0 {
-            return Err(FSEDecoderError::TableIsUninitialized);
-        }
-        let new_state = bits.get_bits(self.table.accuracy_log);
-        self.state = self.table.decode[new_state as usize];
-
-        Ok(())
     }
 
     /// Advance the internal state to decode the next symbol in the bitstream.

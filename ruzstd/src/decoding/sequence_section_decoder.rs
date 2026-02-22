@@ -52,40 +52,36 @@ fn decode_sequences_with_rle(
     scratch: &FSEScratch,
     target: &mut Vec<Sequence>,
 ) -> Result<(), DecodeSequenceError> {
-    let mut ll_dec = FSEDecoder::new(&scratch.literal_lengths);
-    let mut ml_dec = FSEDecoder::new(&scratch.match_lengths);
-    let mut of_dec = FSEDecoder::new(&scratch.offsets);
-
-    if scratch.ll_rle.is_none() {
-        ll_dec.init_state(br)?;
-    }
-    if scratch.of_rle.is_none() {
-        of_dec.init_state(br)?;
-    }
-    if scratch.ml_rle.is_none() {
-        ml_dec.init_state(br)?;
-    }
+    let mut ll_dec = if scratch.ll_rle.is_none() {
+        Some(FSEDecoder::new(&scratch.literal_lengths, br)?)
+    } else {
+        None
+    };
+    let mut of_dec = if scratch.of_rle.is_none() {
+        Some(FSEDecoder::new(&scratch.offsets, br)?)
+    } else {
+        None
+    };
+    let mut ml_dec = if scratch.ml_rle.is_none() {
+        Some(FSEDecoder::new(&scratch.match_lengths, br)?)
+    } else {
+        None
+    };
 
     target.clear();
     target.reserve(section.num_sequences as usize);
 
     for _seq_idx in 0..section.num_sequences {
         //get the codes from either the RLE byte or from the decoder
-        let ll_code = if let Some(ll_rle) = scratch.ll_rle {
-            ll_rle
-        } else {
-            ll_dec.decode_symbol()
-        };
-        let ml_code = if let Some(ml_rle) = scratch.ml_rle {
-            ml_rle
-        } else {
-            ml_dec.decode_symbol()
-        };
-        let of_code = if let Some(of_rle) = scratch.of_rle {
-            of_rle
-        } else {
-            of_dec.decode_symbol()
-        };
+        let ll_code = scratch
+            .ll_rle
+            .unwrap_or_else(|| ll_dec.as_ref().unwrap().decode_symbol());
+        let ml_code = scratch
+            .ml_rle
+            .unwrap_or_else(|| ml_dec.as_ref().unwrap().decode_symbol());
+        let of_code = scratch
+            .of_rle
+            .unwrap_or_else(|| of_dec.as_ref().unwrap().decode_symbol());
 
         let (ll_value, ll_num_bits) = lookup_ll_code(ll_code);
         let (ml_value, ml_num_bits) = lookup_ml_code(ml_code);
@@ -126,14 +122,14 @@ fn decode_sequences_with_rle(
             //    br.bits_remaining(),
             //    br.bits_remaining() / 8,
             //);
-            if scratch.ll_rle.is_none() {
-                ll_dec.update_state(br);
+            if let Some(ref mut dec) = ll_dec {
+                dec.update_state(br);
             }
-            if scratch.ml_rle.is_none() {
-                ml_dec.update_state(br);
+            if let Some(ref mut dec) = ml_dec {
+                dec.update_state(br);
             }
-            if scratch.of_rle.is_none() {
-                of_dec.update_state(br);
+            if let Some(ref mut dec) = of_dec {
+                dec.update_state(br);
             }
         }
 
@@ -157,13 +153,9 @@ fn decode_sequences_without_rle(
     scratch: &FSEScratch,
     target: &mut Vec<Sequence>,
 ) -> Result<(), DecodeSequenceError> {
-    let mut ll_dec = FSEDecoder::new(&scratch.literal_lengths);
-    let mut ml_dec = FSEDecoder::new(&scratch.match_lengths);
-    let mut of_dec = FSEDecoder::new(&scratch.offsets);
-
-    ll_dec.init_state(br)?;
-    of_dec.init_state(br)?;
-    ml_dec.init_state(br)?;
+    let mut ll_dec = FSEDecoder::new(&scratch.literal_lengths, br)?;
+    let mut of_dec = FSEDecoder::new(&scratch.offsets, br)?;
+    let mut ml_dec = FSEDecoder::new(&scratch.match_lengths, br)?;
 
     target.clear();
     target.reserve(section.num_sequences as usize);

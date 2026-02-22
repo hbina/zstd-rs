@@ -9,7 +9,7 @@ use crate::decoding::errors::DecodeSequenceError;
 use crate::decoding::errors::{DecodeBlockContentError, DecompressBlockError};
 use crate::decoding::scratch::DecoderScratch;
 use crate::decoding::sequence_execution::execute_sequences;
-use crate::io::Read;
+use crate::io::{ErrorKind, Read};
 
 pub fn decode_block_content(
     header: &BlockHeader,
@@ -25,9 +25,13 @@ pub fn decode_block_content(
             let single_read_size = header.decompressed_size % BATCH_SIZE as u32;
 
             source.read_exact(&mut buf[0..1]).map_err(|err| {
-                DecodeBlockContentError::ReadError {
-                    step: block_type,
-                    source: err,
+                if err.kind() == ErrorKind::UnexpectedEof {
+                    DecodeBlockContentError::NeedMoreData
+                } else {
+                    DecodeBlockContentError::ReadError {
+                        step: block_type,
+                        source: err,
+                    }
                 }
             })?;
 
@@ -51,21 +55,29 @@ pub fn decode_block_content(
 
             for _ in 0..full_reads {
                 source.read_exact(&mut buf[..]).map_err(|err| {
-                    DecodeBlockContentError::ReadError {
-                        step: block_type,
-                        source: err,
+                    if err.kind() == ErrorKind::UnexpectedEof {
+                        DecodeBlockContentError::NeedMoreData
+                    } else {
+                        DecodeBlockContentError::ReadError {
+                            step: block_type,
+                            source: err,
+                        }
                     }
                 })?;
                 workspace.buffer.push(&buf[..]);
             }
 
             let smaller = &mut buf[..single_read_size as usize];
-            source
-                .read_exact(smaller)
-                .map_err(|err| DecodeBlockContentError::ReadError {
-                    step: block_type,
-                    source: err,
-                })?;
+            source.read_exact(smaller).map_err(|err| {
+                if err.kind() == ErrorKind::UnexpectedEof {
+                    DecodeBlockContentError::NeedMoreData
+                } else {
+                    DecodeBlockContentError::ReadError {
+                        step: block_type,
+                        source: err,
+                    }
+                }
+            })?;
             workspace.buffer.push(smaller);
 
             Ok(u64::from(header.decompressed_size))
@@ -76,7 +88,14 @@ pub fn decode_block_content(
         }
 
         BlockType::Compressed => {
-            decompress_block(header, workspace, source)?;
+            decompress_block(header, workspace, source).map_err(|e| {
+                if let DecompressBlockError::BlockContentReadError(ref io_err) = e {
+                    if io_err.kind() == ErrorKind::UnexpectedEof {
+                        return DecodeBlockContentError::NeedMoreData;
+                    }
+                }
+                DecodeBlockContentError::DecompressBlockError(e)
+            })?;
             Ok(u64::from(header.content_size))
         }
     }

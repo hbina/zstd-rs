@@ -511,13 +511,13 @@ fn test_decode_all() {
 
     // decode_all with correct buffers.
     let mut output = vec![0; original.len()];
-    let result = decoder.decode_all(&input, &mut output).unwrap();
+    let result = decoder.decode_all(input.as_slice(), &mut output).unwrap();
     assert_eq!(result, original.len());
     assert_eq!(output, original);
 
     // decode_all with smaller output length.
     let mut output = vec![0; original.len() - 1];
-    let result = decoder.decode_all(&input, &mut output);
+    let result = decoder.decode_all(input.as_slice(), &mut output);
     assert!(
         matches!(result, Err(FrameDecoderError::TargetTooSmall)),
         "{:?}",
@@ -526,7 +526,7 @@ fn test_decode_all() {
 
     // decode_all with larger output length.
     let mut output = vec![0; original.len() + 1];
-    let result = decoder.decode_all(&input, &mut output).unwrap();
+    let result = decoder.decode_all(input.as_slice(), &mut output).unwrap();
     assert_eq!(result, original.len());
     assert_eq!(&output[..result], original);
 
@@ -551,13 +551,13 @@ fn test_decode_all() {
     // decode_all_to_vec with correct output capacity.
     let mut output = Vec::new();
     output.reserve_exact(original.len());
-    decoder.decode_all_to_vec(&input, &mut output).unwrap();
+    decoder.decode_all_to_vec(input.as_slice(), &mut output).unwrap();
     assert_eq!(output, original);
 
     // decode_all_to_vec with smaller output capacity.
     let mut output = Vec::new();
     output.reserve_exact(original.len() - 1);
-    let result = decoder.decode_all_to_vec(&input, &mut output);
+    let result = decoder.decode_all_to_vec(input.as_slice(), &mut output);
     assert!(
         matches!(result, Err(FrameDecoderError::TargetTooSmall)),
         "{:?}",
@@ -567,7 +567,7 @@ fn test_decode_all() {
     // decode_all_to_vec with larger output capacity.
     let mut output = Vec::new();
     output.reserve_exact(original.len() + 1);
-    decoder.decode_all_to_vec(&input, &mut output).unwrap();
+    decoder.decode_all_to_vec(input.as_slice(), &mut output).unwrap();
     assert_eq!(output, original);
 }
 

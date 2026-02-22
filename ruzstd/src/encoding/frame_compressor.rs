@@ -323,7 +323,7 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(&output, &mut decoded).unwrap();
+        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
         assert_eq!(mock_data, decoded);
 
         let mut decoded = Vec::new();
@@ -343,7 +343,7 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(&output, &mut decoded).unwrap();
+        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
         assert_eq!(mock_data, decoded);
     }
 
@@ -359,7 +359,7 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(&output, &mut decoded).unwrap();
+        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
         assert_eq!(mock_data, decoded);
 
         let mut decoded = Vec::new();

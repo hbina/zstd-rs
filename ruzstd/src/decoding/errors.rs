@@ -347,6 +347,9 @@ pub enum DecodeBlockContentError {
     ExpectedHeaderOfPreviousBlock,
     ReadError { step: BlockType, source: Error },
     DecompressBlockError(DecompressBlockError),
+    /// The source did not contain enough bytes to decode a complete block body.
+    /// The caller should provide more data and retry.
+    NeedMoreData,
 }
 
 #[cfg(feature = "std")]
@@ -378,6 +381,9 @@ impl core::fmt::Display for DecodeBlockContentError {
                 write!(f, "Error while reading bytes for {step}: {source}",)
             }
             DecodeBlockContentError::DecompressBlockError(e) => write!(f, "{e:?}"),
+            DecodeBlockContentError::NeedMoreData => {
+                write!(f, "Not enough bytes in source to decode block body")
+            }
         }
     }
 }
@@ -478,6 +484,9 @@ pub enum FrameDecoderError {
     FailedToSkipFrame,
     TargetTooSmall,
     DictNotProvided { dict_id: u32 },
+    /// The source did not contain enough bytes to complete a frame.
+    /// The caller should provide more data and retry.
+    NeedMoreData,
 }
 
 #[cfg(feature = "std")]
@@ -549,6 +558,9 @@ impl core::fmt::Display for FrameDecoderError {
             }
             FrameDecoderError::DictNotProvided { dict_id } => {
                 write!(f, "Frame header specified dictionary id 0x{dict_id:X} that wasnt provided by add_dict() or reset_with_dict()")
+            }
+            FrameDecoderError::NeedMoreData => {
+                write!(f, "Not enough bytes in source to decode a complete frame")
             }
         }
     }

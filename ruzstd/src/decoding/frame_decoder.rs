@@ -494,7 +494,8 @@ impl FrameDecoder {
 
     /// Decode multiple frames into the output slice.
     ///
-    /// `input` must contain an exact number of frames.
+    /// `input` must contain an exact number of frames. Decoding stops when
+    /// the input reader signals end-of-data between frame boundaries.
     ///
     /// `output` must be large enough to hold the decompressed data. If you don't know
     /// how large the output will be, use [`FrameDecoder::decode_blocks`] instead.
@@ -502,23 +503,32 @@ impl FrameDecoder {
     /// This calls [`FrameDecoder::init`], and all bytes currently in the decoder will be lost.
     ///
     /// Returns the number of bytes written to `output`.
-    pub fn decode_all(
+    pub fn decode_all<R: Read>(
         &mut self,
-        mut input: &[u8],
+        mut input: R,
         mut output: &mut [u8],
     ) -> Result<usize, FrameDecoderError> {
         let mut total_bytes_written = 0;
-        while !input.is_empty() {
+        loop {
             match self.init(&mut input) {
                 Ok(_) => {}
                 Err(FrameDecoderError::ReadFrameHeaderError(
                     crate::decoding::errors::ReadFrameHeaderError::SkipFrame { length, .. },
                 )) => {
-                    input = input
-                        .get(length as usize..)
-                        .ok_or(FrameDecoderError::FailedToSkipFrame)?;
+                    // Read and discard the skippable frame body
+                    let mut remaining = length as usize;
+                    let mut skip_buf = [0u8; 4096];
+                    while remaining > 0 {
+                        let to_read = remaining.min(skip_buf.len());
+                        input
+                            .read_exact(&mut skip_buf[..to_read])
+                            .map_err(|_| FrameDecoderError::FailedToSkipFrame)?;
+                        remaining -= to_read;
+                    }
                     continue;
                 }
+                // EOF between frames — all frames have been decoded
+                Err(FrameDecoderError::ReadFrameHeaderError(_)) => break,
                 Err(e) => return Err(e),
             };
             loop {
@@ -542,7 +552,8 @@ impl FrameDecoder {
 
     /// Decode multiple frames into the extra capacity of the output vector.
     ///
-    /// `input` must contain an exact number of frames.
+    /// `input` must contain an exact number of frames. Decoding stops when
+    /// the input reader signals end-of-data between frame boundaries.
     ///
     /// `output` must have enough extra capacity to hold the decompressed data.
     /// This function will not reallocate or grow the vector. If you don't know
@@ -552,9 +563,9 @@ impl FrameDecoder {
     ///
     /// The length of the output vector is updated to include the decompressed data.
     /// The length is not changed if an error occurs.
-    pub fn decode_all_to_vec(
+    pub fn decode_all_to_vec<R: Read>(
         &mut self,
-        input: &[u8],
+        input: R,
         output: &mut Vec<u8>,
     ) -> Result<(), FrameDecoderError> {
         let len = output.len();

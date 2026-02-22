@@ -4,12 +4,13 @@ name = "ruzstd-fuzz"
 version = "0.0.1"
 authors = ["Automatically generated"]
 publish = false
+edition = "2024"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
-zstd = "0.5.1+zstd.1.4.4"
+zstd = "0.13.3"
 
 [dependencies.ruzstd]
 path = ".."

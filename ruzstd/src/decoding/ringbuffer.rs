@@ -478,7 +478,7 @@ impl RingBuffer {
         // calc the actually wanted slices in raw parts
         let start_in_s1 = usize::min(s1_len, start);
         let end_in_s1 = usize::min(s1_len, start + len);
-        let m1_ptr = s1_ptr.add(start_in_s1);
+        let m1_ptr = unsafe { s1_ptr.add(start_in_s1) };
         let m1_len = end_in_s1 - start_in_s1;
 
         debug_assert!(end_in_s1 <= s1_len);
@@ -486,7 +486,7 @@ impl RingBuffer {
 
         let start_in_s2 = start.saturating_sub(s1_len);
         let end_in_s2 = start_in_s2 + (len - m1_len);
-        let m2_ptr = s2_ptr.add(start_in_s2);
+        let m2_ptr = unsafe { s2_ptr.add(start_in_s2) };
         let m2_len = end_in_s2 - start_in_s2;
 
         debug_assert!(start_in_s2 <= s2_len);
@@ -511,14 +511,18 @@ impl RingBuffer {
         debug_assert!(f2_len >= m1_in_f2 + m2_in_f2);
         debug_assert_eq!(len, m1_in_f1 + m2_in_f1 + m1_in_f2 + m2_in_f2);
 
-        debug_assert!(self.buf.as_ptr().add(self.cap) > f1_ptr.add(m1_in_f1 + m2_in_f1));
-        debug_assert!(self.buf.as_ptr().add(self.cap) > f2_ptr.add(m1_in_f2 + m2_in_f2));
+        unsafe {
+            debug_assert!(self.buf.as_ptr().add(self.cap) > f1_ptr.add(m1_in_f1 + m2_in_f1));
+            debug_assert!(self.buf.as_ptr().add(self.cap) > f2_ptr.add(m1_in_f2 + m2_in_f2));
+        }
 
         debug_assert!((m1_in_f2 > 0) ^ (m2_in_f1 > 0) || (m1_in_f2 == 0 && m2_in_f1 == 0));
 
-        copy_with_checks(
-            m1_ptr, m2_ptr, f1_ptr, f2_ptr, m1_in_f1, m2_in_f1, m1_in_f2, m2_in_f2,
-        );
+        unsafe {
+            copy_with_checks(
+                m1_ptr, m2_ptr, f1_ptr, f2_ptr, m1_in_f1, m2_in_f1, m1_in_f2, m2_in_f2,
+            );
+        }
         self.tail = (self.tail + len) % self.cap;
     }
 }
@@ -558,47 +562,49 @@ unsafe fn copy_bytes_overshooting(
     dst: (*mut u8, usize),
     copy_at_least: usize,
 ) {
-    // By default use usize as the copy size
-    #[cfg(all(not(target_feature = "sse2"), not(target_feature = "neon")))]
-    type CopyType = usize;
+    unsafe {
+        // By default use usize as the copy size
+        #[cfg(all(not(target_feature = "sse2"), not(target_feature = "neon")))]
+        type CopyType = usize;
 
-    // Use u128 if we detect a simd feature
-    #[cfg(target_feature = "neon")]
-    type CopyType = u128;
-    #[cfg(target_feature = "sse2")]
-    type CopyType = u128;
+        // Use u128 if we detect a simd feature
+        #[cfg(target_feature = "neon")]
+        type CopyType = u128;
+        #[cfg(target_feature = "sse2")]
+        type CopyType = u128;
 
-    const COPY_AT_ONCE_SIZE: usize = core::mem::size_of::<CopyType>();
-    let min_buffer_size = usize::min(src.1, dst.1);
+        const COPY_AT_ONCE_SIZE: usize = core::mem::size_of::<CopyType>();
+        let min_buffer_size = usize::min(src.1, dst.1);
 
-    // Can copy in just one read+write, very common case
-    if min_buffer_size >= COPY_AT_ONCE_SIZE && copy_at_least <= COPY_AT_ONCE_SIZE {
-        dst.0
-            .cast::<CopyType>()
-            .write_unaligned(src.0.cast::<CopyType>().read_unaligned())
-    } else {
-        let copy_multiple = copy_at_least.next_multiple_of(COPY_AT_ONCE_SIZE);
-        // Can copy in multiple simple instructions
-        if min_buffer_size >= copy_multiple {
-            let mut src_ptr = src.0.cast::<CopyType>();
-            let src_ptr_end = src.0.add(copy_multiple).cast::<CopyType>();
-            let mut dst_ptr = dst.0.cast::<CopyType>();
-
-            while src_ptr < src_ptr_end {
-                dst_ptr.write_unaligned(src_ptr.read_unaligned());
-                src_ptr = src_ptr.add(1);
-                dst_ptr = dst_ptr.add(1);
-            }
+        // Can copy in just one read+write, very common case
+        if min_buffer_size >= COPY_AT_ONCE_SIZE && copy_at_least <= COPY_AT_ONCE_SIZE {
+            dst.0
+                .cast::<CopyType>()
+                .write_unaligned(src.0.cast::<CopyType>().read_unaligned())
         } else {
-            // Fall back to standard memcopy
-            dst.0.copy_from_nonoverlapping(src.0, copy_at_least);
-        }
-    }
+            let copy_multiple = copy_at_least.next_multiple_of(COPY_AT_ONCE_SIZE);
+            // Can copy in multiple simple instructions
+            if min_buffer_size >= copy_multiple {
+                let mut src_ptr = src.0.cast::<CopyType>();
+                let src_ptr_end = src.0.add(copy_multiple).cast::<CopyType>();
+                let mut dst_ptr = dst.0.cast::<CopyType>();
 
-    debug_assert_eq!(
-        slice::from_raw_parts(src.0, copy_at_least),
-        slice::from_raw_parts(dst.0, copy_at_least)
-    );
+                while src_ptr < src_ptr_end {
+                    dst_ptr.write_unaligned(src_ptr.read_unaligned());
+                    src_ptr = src_ptr.add(1);
+                    dst_ptr = dst_ptr.add(1);
+                }
+            } else {
+                // Fall back to standard memcopy
+                dst.0.copy_from_nonoverlapping(src.0, copy_at_least);
+            }
+        }
+
+        debug_assert_eq!(
+            slice::from_raw_parts(src.0, copy_at_least),
+            slice::from_raw_parts(dst.0, copy_at_least)
+        );
+    }
 }
 
 #[allow(dead_code)]
@@ -614,15 +620,17 @@ unsafe fn copy_without_checks(
     m1_in_f2: usize,
     m2_in_f2: usize,
 ) {
-    f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-    f1_ptr
-        .add(m1_in_f1)
-        .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+    unsafe {
+        f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+        f1_ptr
+            .add(m1_in_f1)
+            .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
 
-    f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
-    f2_ptr
-        .add(m1_in_f2)
-        .copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+        f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
+        f2_ptr
+            .add(m1_in_f2)
+            .copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+    }
 }
 
 #[allow(dead_code)]
@@ -638,22 +646,24 @@ unsafe fn copy_with_checks(
     m1_in_f2: usize,
     m2_in_f2: usize,
 ) {
-    if m1_in_f1 != 0 {
-        f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-    }
-    if m2_in_f1 != 0 {
-        f1_ptr
-            .add(m1_in_f1)
-            .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
-    }
+    unsafe {
+        if m1_in_f1 != 0 {
+            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+        }
+        if m2_in_f1 != 0 {
+            f1_ptr
+                .add(m1_in_f1)
+                .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+        }
 
-    if m1_in_f2 != 0 {
-        f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
-    }
-    if m2_in_f2 != 0 {
-        f2_ptr
-            .add(m1_in_f2)
-            .copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+        if m1_in_f2 != 0 {
+            f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
+        }
+        if m2_in_f2 != 0 {
+            f2_ptr
+                .add(m1_in_f2)
+                .copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+        }
     }
 }
 
@@ -670,218 +680,220 @@ unsafe fn copy_with_nobranch_check(
     m1_in_f2: usize,
     m2_in_f2: usize,
 ) {
-    let case = (m1_in_f1 > 0) as usize
-        | (((m2_in_f1 > 0) as usize) << 1)
-        | (((m1_in_f2 > 0) as usize) << 2)
-        | (((m2_in_f2 > 0) as usize) << 3);
+    unsafe {
+        let case = (m1_in_f1 > 0) as usize
+            | (((m2_in_f1 > 0) as usize) << 1)
+            | (((m1_in_f2 > 0) as usize) << 2)
+            | (((m2_in_f2 > 0) as usize) << 3);
 
-    match case {
-        0 => {}
+        match case {
+            0 => {}
 
-        // one bit set
-        1 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+            // one bit set
+            1 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+            }
+            2 => {
+                f1_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+            }
+            4 => {
+                f2_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f2);
+            }
+            8 => {
+                f2_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f2);
+            }
+
+            // two bit set
+            3 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+                f1_ptr
+                    .add(m1_in_f1)
+                    .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+            }
+            5 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+                f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
+            }
+            6 => core::hint::unreachable_unchecked(),
+            7 => core::hint::unreachable_unchecked(),
+            9 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+                f2_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f2);
+            }
+            10 => {
+                f1_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+                f2_ptr.copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+            }
+            12 => {
+                f2_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f2);
+                f2_ptr
+                    .add(m1_in_f2)
+                    .copy_from_nonoverlapping(m2_ptr, m2_in_f2);
+            }
+
+            // three bit set
+            11 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+                f1_ptr
+                    .add(m1_in_f1)
+                    .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
+                f2_ptr.copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
+            }
+            13 => {
+                f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
+                f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
+                f2_ptr
+                    .add(m1_in_f2)
+                    .copy_from_nonoverlapping(m2_ptr, m2_in_f2);
+            }
+            14 => core::hint::unreachable_unchecked(),
+            15 => core::hint::unreachable_unchecked(),
+            _ => core::hint::unreachable_unchecked(),
         }
-        2 => {
-            f1_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f1);
-        }
-        4 => {
-            f2_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f2);
-        }
-        8 => {
-            f2_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f2);
-        }
-
-        // two bit set
-        3 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-            f1_ptr
-                .add(m1_in_f1)
-                .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
-        }
-        5 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-            f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
-        }
-        6 => core::hint::unreachable_unchecked(),
-        7 => core::hint::unreachable_unchecked(),
-        9 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-            f2_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f2);
-        }
-        10 => {
-            f1_ptr.copy_from_nonoverlapping(m2_ptr, m2_in_f1);
-            f2_ptr.copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
-        }
-        12 => {
-            f2_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f2);
-            f2_ptr
-                .add(m1_in_f2)
-                .copy_from_nonoverlapping(m2_ptr, m2_in_f2);
-        }
-
-        // three bit set
-        11 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-            f1_ptr
-                .add(m1_in_f1)
-                .copy_from_nonoverlapping(m2_ptr, m2_in_f1);
-            f2_ptr.copy_from_nonoverlapping(m2_ptr.add(m2_in_f1), m2_in_f2);
-        }
-        13 => {
-            f1_ptr.copy_from_nonoverlapping(m1_ptr, m1_in_f1);
-            f2_ptr.copy_from_nonoverlapping(m1_ptr.add(m1_in_f1), m1_in_f2);
-            f2_ptr
-                .add(m1_in_f2)
-                .copy_from_nonoverlapping(m2_ptr, m2_in_f2);
-        }
-        14 => core::hint::unreachable_unchecked(),
-        15 => core::hint::unreachable_unchecked(),
-        _ => core::hint::unreachable_unchecked(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::RingBuffer;
-
-    #[test]
-    fn smoke() {
-        let mut rb = RingBuffer::new();
-
-        rb.reserve(15);
-        assert_eq!(17, rb.cap);
-
-        rb.extend(b"0123456789");
-        assert_eq!(rb.len(), 10);
-        assert_eq!(rb.as_slices().0, b"0123456789");
-        assert_eq!(rb.as_slices().1, b"");
-
-        rb.drop_first_n(5);
-        assert_eq!(rb.len(), 5);
-        assert_eq!(rb.as_slices().0, b"56789");
-        assert_eq!(rb.as_slices().1, b"");
-
-        rb.extend_from_within(2, 3);
-        assert_eq!(rb.len(), 8);
-        assert_eq!(rb.as_slices().0, b"56789789");
-        assert_eq!(rb.as_slices().1, b"");
-
-        rb.extend_from_within(0, 3);
-        assert_eq!(rb.len(), 11);
-        assert_eq!(rb.as_slices().0, b"56789789567");
-        assert_eq!(rb.as_slices().1, b"");
-
-        rb.extend_from_within(0, 2);
-        assert_eq!(rb.len(), 13);
-        assert_eq!(rb.as_slices().0, b"567897895675");
-        assert_eq!(rb.as_slices().1, b"6");
-
-        rb.drop_first_n(11);
-        assert_eq!(rb.len(), 2);
-        assert_eq!(rb.as_slices().0, b"5");
-        assert_eq!(rb.as_slices().1, b"6");
-
-        rb.extend(b"0123456789");
-        assert_eq!(rb.len(), 12);
-        assert_eq!(rb.as_slices().0, b"5");
-        assert_eq!(rb.as_slices().1, b"60123456789");
-
-        rb.drop_first_n(11);
-        assert_eq!(rb.len(), 1);
-        assert_eq!(rb.as_slices().0, b"9");
-        assert_eq!(rb.as_slices().1, b"");
-
-        rb.extend(b"0123456789");
-        assert_eq!(rb.len(), 11);
-        assert_eq!(rb.as_slices().0, b"9012345");
-        assert_eq!(rb.as_slices().1, b"6789");
     }
 
-    #[test]
-    fn edge_cases() {
-        // Fill exactly, then empty then fill again
-        let mut rb = RingBuffer::new();
-        rb.reserve(16);
-        assert_eq!(17, rb.cap);
-        rb.extend(b"0123456789012345");
-        assert_eq!(17, rb.cap);
-        assert_eq!(16, rb.len());
-        assert_eq!(0, rb.free());
-        rb.drop_first_n(16);
-        assert_eq!(0, rb.len());
-        assert_eq!(16, rb.free());
-        rb.extend(b"0123456789012345");
-        assert_eq!(16, rb.len());
-        assert_eq!(0, rb.free());
-        assert_eq!(17, rb.cap);
-        assert_eq!(1, rb.as_slices().0.len());
-        assert_eq!(15, rb.as_slices().1.len());
+    #[cfg(test)]
+    mod tests {
+        use super::RingBuffer;
 
-        rb.clear();
+        #[test]
+        fn smoke() {
+            let mut rb = RingBuffer::new();
 
-        // data in both slices and then reserve
-        rb.extend(b"0123456789012345");
-        rb.drop_first_n(8);
-        rb.extend(b"67890123");
-        assert_eq!(16, rb.len());
-        assert_eq!(0, rb.free());
-        assert_eq!(17, rb.cap);
-        assert_eq!(9, rb.as_slices().0.len());
-        assert_eq!(7, rb.as_slices().1.len());
-        rb.reserve(1);
-        assert_eq!(16, rb.len());
-        assert_eq!(16, rb.free());
-        assert_eq!(33, rb.cap);
-        assert_eq!(16, rb.as_slices().0.len());
-        assert_eq!(0, rb.as_slices().1.len());
+            rb.reserve(15);
+            assert_eq!(17, rb.cap);
 
-        rb.clear();
+            rb.extend(b"0123456789");
+            assert_eq!(rb.len(), 10);
+            assert_eq!(rb.as_slices().0, b"0123456789");
+            assert_eq!(rb.as_slices().1, b"");
 
-        // fill exactly, then extend from within
-        rb.extend(b"0123456789012345");
-        rb.extend_from_within(0, 16);
-        assert_eq!(32, rb.len());
-        assert_eq!(0, rb.free());
-        assert_eq!(33, rb.cap);
-        assert_eq!(32, rb.as_slices().0.len());
-        assert_eq!(0, rb.as_slices().1.len());
+            rb.drop_first_n(5);
+            assert_eq!(rb.len(), 5);
+            assert_eq!(rb.as_slices().0, b"56789");
+            assert_eq!(rb.as_slices().1, b"");
 
-        // extend from within cases
-        let mut rb = RingBuffer::new();
-        rb.reserve(8);
-        rb.extend(b"01234567");
-        rb.drop_first_n(5);
-        rb.extend_from_within(0, 3);
-        assert_eq!(4, rb.as_slices().0.len());
-        assert_eq!(2, rb.as_slices().1.len());
+            rb.extend_from_within(2, 3);
+            assert_eq!(rb.len(), 8);
+            assert_eq!(rb.as_slices().0, b"56789789");
+            assert_eq!(rb.as_slices().1, b"");
 
-        rb.drop_first_n(2);
-        assert_eq!(2, rb.as_slices().0.len());
-        assert_eq!(2, rb.as_slices().1.len());
-        rb.extend_from_within(0, 4);
-        assert_eq!(2, rb.as_slices().0.len());
-        assert_eq!(6, rb.as_slices().1.len());
+            rb.extend_from_within(0, 3);
+            assert_eq!(rb.len(), 11);
+            assert_eq!(rb.as_slices().0, b"56789789567");
+            assert_eq!(rb.as_slices().1, b"");
 
-        rb.drop_first_n(2);
-        assert_eq!(6, rb.as_slices().0.len());
-        assert_eq!(0, rb.as_slices().1.len());
-        rb.drop_first_n(2);
-        assert_eq!(4, rb.as_slices().0.len());
-        assert_eq!(0, rb.as_slices().1.len());
-        rb.extend_from_within(0, 4);
-        assert_eq!(7, rb.as_slices().0.len());
-        assert_eq!(1, rb.as_slices().1.len());
+            rb.extend_from_within(0, 2);
+            assert_eq!(rb.len(), 13);
+            assert_eq!(rb.as_slices().0, b"567897895675");
+            assert_eq!(rb.as_slices().1, b"6");
 
-        let mut rb = RingBuffer::new();
-        rb.reserve(8);
-        rb.extend(b"11111111");
-        rb.drop_first_n(7);
-        rb.extend(b"111");
-        assert_eq!(2, rb.as_slices().0.len());
-        assert_eq!(2, rb.as_slices().1.len());
-        rb.extend_from_within(0, 4);
-        assert_eq!(b"11", rb.as_slices().0);
-        assert_eq!(b"111111", rb.as_slices().1);
+            rb.drop_first_n(11);
+            assert_eq!(rb.len(), 2);
+            assert_eq!(rb.as_slices().0, b"5");
+            assert_eq!(rb.as_slices().1, b"6");
+
+            rb.extend(b"0123456789");
+            assert_eq!(rb.len(), 12);
+            assert_eq!(rb.as_slices().0, b"5");
+            assert_eq!(rb.as_slices().1, b"60123456789");
+
+            rb.drop_first_n(11);
+            assert_eq!(rb.len(), 1);
+            assert_eq!(rb.as_slices().0, b"9");
+            assert_eq!(rb.as_slices().1, b"");
+
+            rb.extend(b"0123456789");
+            assert_eq!(rb.len(), 11);
+            assert_eq!(rb.as_slices().0, b"9012345");
+            assert_eq!(rb.as_slices().1, b"6789");
+        }
+
+        #[test]
+        fn edge_cases() {
+            // Fill exactly, then empty then fill again
+            let mut rb = RingBuffer::new();
+            rb.reserve(16);
+            assert_eq!(17, rb.cap);
+            rb.extend(b"0123456789012345");
+            assert_eq!(17, rb.cap);
+            assert_eq!(16, rb.len());
+            assert_eq!(0, rb.free());
+            rb.drop_first_n(16);
+            assert_eq!(0, rb.len());
+            assert_eq!(16, rb.free());
+            rb.extend(b"0123456789012345");
+            assert_eq!(16, rb.len());
+            assert_eq!(0, rb.free());
+            assert_eq!(17, rb.cap);
+            assert_eq!(1, rb.as_slices().0.len());
+            assert_eq!(15, rb.as_slices().1.len());
+
+            rb.clear();
+
+            // data in both slices and then reserve
+            rb.extend(b"0123456789012345");
+            rb.drop_first_n(8);
+            rb.extend(b"67890123");
+            assert_eq!(16, rb.len());
+            assert_eq!(0, rb.free());
+            assert_eq!(17, rb.cap);
+            assert_eq!(9, rb.as_slices().0.len());
+            assert_eq!(7, rb.as_slices().1.len());
+            rb.reserve(1);
+            assert_eq!(16, rb.len());
+            assert_eq!(16, rb.free());
+            assert_eq!(33, rb.cap);
+            assert_eq!(16, rb.as_slices().0.len());
+            assert_eq!(0, rb.as_slices().1.len());
+
+            rb.clear();
+
+            // fill exactly, then extend from within
+            rb.extend(b"0123456789012345");
+            rb.extend_from_within(0, 16);
+            assert_eq!(32, rb.len());
+            assert_eq!(0, rb.free());
+            assert_eq!(33, rb.cap);
+            assert_eq!(32, rb.as_slices().0.len());
+            assert_eq!(0, rb.as_slices().1.len());
+
+            // extend from within cases
+            let mut rb = RingBuffer::new();
+            rb.reserve(8);
+            rb.extend(b"01234567");
+            rb.drop_first_n(5);
+            rb.extend_from_within(0, 3);
+            assert_eq!(4, rb.as_slices().0.len());
+            assert_eq!(2, rb.as_slices().1.len());
+
+            rb.drop_first_n(2);
+            assert_eq!(2, rb.as_slices().0.len());
+            assert_eq!(2, rb.as_slices().1.len());
+            rb.extend_from_within(0, 4);
+            assert_eq!(2, rb.as_slices().0.len());
+            assert_eq!(6, rb.as_slices().1.len());
+
+            rb.drop_first_n(2);
+            assert_eq!(6, rb.as_slices().0.len());
+            assert_eq!(0, rb.as_slices().1.len());
+            rb.drop_first_n(2);
+            assert_eq!(4, rb.as_slices().0.len());
+            assert_eq!(0, rb.as_slices().1.len());
+            rb.extend_from_within(0, 4);
+            assert_eq!(7, rb.as_slices().0.len());
+            assert_eq!(1, rb.as_slices().1.len());
+
+            let mut rb = RingBuffer::new();
+            rb.reserve(8);
+            rb.extend(b"11111111");
+            rb.drop_first_n(7);
+            rb.extend(b"111");
+            assert_eq!(2, rb.as_slices().0.len());
+            assert_eq!(2, rb.as_slices().1.len());
+            rb.extend_from_within(0, 4);
+            assert_eq!(b"11", rb.as_slices().0);
+            assert_eq!(b"111111", rb.as_slices().1);
+        }
     }
 }

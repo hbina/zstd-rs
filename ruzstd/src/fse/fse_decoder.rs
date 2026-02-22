@@ -308,7 +308,7 @@ impl FSETable {
 }
 
 /// A single entry in an FSE table.
-#[derive(Copy, Clone, Debug)]
+#[derive(Default, Copy, Clone, Debug)]
 pub struct Entry {
     /// This value is used as an offset value, and it is added
     /// to a value read from the stream to determine the next state value.

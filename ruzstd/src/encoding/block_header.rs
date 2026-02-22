@@ -54,8 +54,7 @@ mod tests {
         let mut decoder = block_decoder::new();
         let parsed_header = decoder
             .read_block_header(serialized_header.as_slice())
-            .unwrap()
-            .0;
+            .unwrap();
 
         assert!(parsed_header.last_block);
         assert_eq!(parsed_header.block_type, BlockType::Compressed);

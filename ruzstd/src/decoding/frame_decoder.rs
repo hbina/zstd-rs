@@ -6,7 +6,7 @@
 
 use super::frame;
 use crate::blocks::block::BlockHeader;
-use crate::decoding;
+use crate::decoding::block_decoder::decode_block_content;
 use crate::decoding::dictionary::Dictionary;
 use crate::decoding::errors::FrameDecoderError;
 use crate::decoding::scratch::DecoderScratch;
@@ -285,17 +285,14 @@ impl FrameDecoder {
         use FrameDecoderError as err;
         let state = self.state.as_mut().ok_or(err::NotYetInitialized)?;
 
-        let mut block_dec = decoding::block_decoder::new();
-
         let buffer_size_before = state.decoder_scratch.buffer.len();
         let block_counter_before = state.block_counter;
         loop {
             vprintln!("################");
             vprintln!("Next Block: {}", state.block_counter);
             vprintln!("################");
-            let block_header = block_dec
-                .read_block_header(&mut source)
-                .map_err(err::FailedToReadBlockHeader)?;
+            let (block_header, _) =
+                BlockHeader::parse(&mut source).map_err(err::FailedToReadBlockHeader)?;
             state.bytes_read_counter += u64::from(BlockHeader::SIZE);
 
             vprintln!();
@@ -306,9 +303,9 @@ impl FrameDecoder {
                 block_header.decompressed_size
             );
 
-            let bytes_read_in_block_body = block_dec
-                .decode_block_content(&block_header, &mut state.decoder_scratch, &mut source)
-                .map_err(err::FailedToReadBlockBody)?;
+            let bytes_read_in_block_body =
+                decode_block_content(&block_header, &mut state.decoder_scratch, &mut source)
+                    .map_err(err::FailedToReadBlockBody)?;
             state.bytes_read_counter += bytes_read_in_block_body;
 
             state.block_counter += 1;
@@ -431,8 +428,6 @@ impl FrameDecoder {
                     Some(s) => s,
                     None => panic!("Bug in library"),
                 };
-                let mut block_dec = decoding::block_decoder::new();
-
                 if state.frame_header.descriptor.content_checksum_flag()
                     && state.frame_finished
                     && state.check_sum.is_none()
@@ -452,9 +447,8 @@ impl FrameDecoder {
                     if mt_source.len() < 3 {
                         break;
                     }
-                    let block_header = block_dec
-                        .read_block_header(&mut mt_source)
-                        .map_err(err::FailedToReadBlockHeader)?;
+                    let (block_header, _) =
+                        BlockHeader::parse(&mut mt_source).map_err(err::FailedToReadBlockHeader)?;
 
                     // check the needed size for the block before updating counters.
                     // If not enough bytes are in the source, the header will have to be read again, so act like we never read it in the first place
@@ -463,13 +457,12 @@ impl FrameDecoder {
                     }
                     state.bytes_read_counter += u64::from(BlockHeader::SIZE);
 
-                    let bytes_read_in_block_body = block_dec
-                        .decode_block_content(
-                            &block_header,
-                            &mut state.decoder_scratch,
-                            &mut mt_source,
-                        )
-                        .map_err(err::FailedToReadBlockBody)?;
+                    let bytes_read_in_block_body = decode_block_content(
+                        &block_header,
+                        &mut state.decoder_scratch,
+                        &mut mt_source,
+                    )
+                    .map_err(err::FailedToReadBlockBody)?;
                     state.bytes_read_counter += bytes_read_in_block_body;
                     state.block_counter += 1;
 

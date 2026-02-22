@@ -1,4 +1,7 @@
 //! Block header definitions.
+use crate::common::MAX_BLOCK_SIZE;
+use crate::decoding::errors::{BlockHeaderReadError, BlockSizeError};
+use crate::io::Read;
 
 /// There are 4 different kinds of blocks, and the type of block influences the meaning of `Block_Size`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,4 +47,50 @@ pub struct BlockHeader {
 
 impl BlockHeader {
     pub const SIZE: u64 = 3;
+
+    /// Read 3 bytes from `r`, parse them as a block header, and return the header together
+    /// with `r` so the caller can continue reading from where the header ended.
+    pub fn parse<R: Read>(mut r: R) -> Result<(Self, R), BlockHeaderReadError> {
+        let mut buf = [0u8; 3];
+        r.read_exact(&mut buf)?;
+
+        let last_block = buf[0] & 0x1 == 1;
+        let block_type = match (buf[0] >> 1) & 0x3 {
+            0 => BlockType::Raw,
+            1 => BlockType::RLE,
+            2 => BlockType::Compressed,
+            3 => return Err(BlockHeaderReadError::FoundReservedBlock),
+            _ => unreachable!(),
+        };
+
+        let block_content_size =
+            u32::from(buf[0] >> 3) | (u32::from(buf[1]) << 5) | (u32::from(buf[2]) << 13);
+
+        if block_content_size > MAX_BLOCK_SIZE {
+            return Err(BlockSizeError::BlockSizeTooLarge {
+                size: block_content_size,
+            }
+            .into());
+        }
+
+        let decompressed_size = match block_type {
+            BlockType::Raw | BlockType::RLE => block_content_size,
+            BlockType::Compressed | BlockType::Reserved => 0,
+        };
+        let content_size = match block_type {
+            BlockType::Raw | BlockType::Compressed => block_content_size,
+            BlockType::RLE => 1,
+            BlockType::Reserved => 0,
+        };
+
+        Ok((
+            BlockHeader {
+                last_block,
+                block_type,
+                decompressed_size,
+                content_size,
+            },
+            r,
+        ))
+    }
 }

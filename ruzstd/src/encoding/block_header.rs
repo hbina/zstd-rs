@@ -39,7 +39,7 @@ impl BlockHeader {
 #[cfg(test)]
 mod tests {
     use super::BlockHeader;
-    use crate::{blocks::block::BlockType, decoding::block_decoder};
+    use crate::blocks::block::BlockType;
     use alloc::vec::Vec;
 
     #[test]
@@ -51,10 +51,8 @@ mod tests {
         };
         let mut serialized_header = Vec::new();
         header.serialize(&mut serialized_header);
-        let mut decoder = block_decoder::new();
-        let parsed_header = decoder
-            .read_block_header(serialized_header.as_slice())
-            .unwrap();
+        let (parsed_header, _) =
+            crate::blocks::block::BlockHeader::parse(serialized_header.as_slice()).unwrap();
 
         assert!(parsed_header.last_block);
         assert_eq!(parsed_header.block_type, BlockType::Compressed);

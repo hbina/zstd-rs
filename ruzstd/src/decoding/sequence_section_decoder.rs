@@ -17,11 +17,12 @@ pub fn decode_sequences(
     scratch: &mut FSEScratch,
     target: &mut Vec<Sequence>,
 ) -> Result<(), DecodeSequenceError> {
-    let bytes_read = maybe_update_fse_tables(section, source, scratch)?;
+    let bit_stream = maybe_update_fse_tables(section, source, scratch)?;
 
-    vprintln!("Updating tables used {} bytes", bytes_read);
-
-    let bit_stream = &source[bytes_read..];
+    vprintln!(
+        "Updating tables used {} bytes",
+        source.len() - bit_stream.len()
+    );
 
     let mut br = BitReaderReversed::new(bit_stream);
 
@@ -283,11 +284,11 @@ pub const ML_MAX_LOG: u8 = 9;
 /// "The maximum accuracy log for the offset table is 8."
 pub const OF_MAX_LOG: u8 = 8;
 
-fn maybe_update_fse_tables(
+fn maybe_update_fse_tables<'a>(
     section: &SequencesHeader,
-    source: &[u8],
+    source: &'a [u8],
     scratch: &mut FSEScratch,
-) -> Result<usize, DecodeSequenceError> {
+) -> Result<&'a [u8], DecodeSequenceError> {
     let modes = section
         .modes
         .ok_or(DecodeSequenceError::MissingCompressionMode)?;
@@ -398,7 +399,7 @@ fn maybe_update_fse_tables(
         }
     };
 
-    Ok(bytes_read)
+    Ok(&source[bytes_read..])
 }
 
 // The default Literal Length decoding table uses an accuracy logarithm of 6 bits.

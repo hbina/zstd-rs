@@ -221,22 +221,28 @@ fn encode_sequences(
 }
 
 fn encode_seqnum(seqnum: usize, writer: &mut BitWriter<impl AsMut<Vec<u8>>>) {
+    // RFC 8878: sequence count encoding:
+    // 1..=127:    1 byte  (direct value)
+    // 128..=32511: 2 bytes (first = (value >> 8) | 0x80, second = value & 0xFF)
+    //              first byte must be in 128..=254 (i.e. value < 0x7F00 = 32512)
+    // 32512..=98303: 3 bytes (0xFF, low_byte, high_byte) where value = low + high*256 + 0x7F00
     const UPPER_LIMIT: usize = 0xFFFF + 0x7F00;
     match seqnum {
         1..=127 => writer.write_bits(seqnum as u32, 8),
-        128..=0x7FFF => {
+        128..=0x7EFF => {
             let upper = ((seqnum >> 8) | 0x80) as u8;
             let lower = seqnum as u8;
             writer.write_bits(upper, 8);
             writer.write_bits(lower, 8);
         }
-        0x8000..=UPPER_LIMIT => {
+        0x7F00..=UPPER_LIMIT => {
             let encode = seqnum - 0x7F00;
+            // Decoder reads: source[1] + (source[2] << 8) + 0x7F00 (little-endian)
+            let lower = (encode & 0xFF) as u8;
             let upper = (encode >> 8) as u8;
-            let lower = encode as u8;
             writer.write_bits(255u8, 8);
-            writer.write_bits(upper, 8);
             writer.write_bits(lower, 8);
+            writer.write_bits(upper, 8);
         }
         _ => unreachable!(),
     }
@@ -293,7 +299,7 @@ fn encode_match_len(len: u32) -> (u8, u32, usize) {
         8195..=16386 => (49, len - 8195, 13),
         16387..=32770 => (50, len - 16387, 14),
         32771..=65538 => (51, len - 32771, 15),
-        65539..=131074 => (52, len - 32771, 16),
+        65539..=131074 => (52, len - 65539, 16),
         131075.. => unreachable!(),
     }
 }

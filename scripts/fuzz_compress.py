@@ -64,7 +64,7 @@ class Config:
         self.zstd_binary = "zstd"
         self.temp_dir = Path(tempfile.mkdtemp(prefix="ruzstd_fuzz_compress_"))
         self.crash_dir = Path("/tmp/ruzstd_fuzz_compress_crashes")
-        self.min_size = 0
+        self.min_size = 1024  # 1 KB minimum for meaningful compression testing
         self.max_size = 10 * 1024 * 1024  # 10 MB
         self.report_interval = 100
         self.verbose = False
@@ -398,7 +398,7 @@ def worker(
 
     @given(
         data=st.binary(min_size=config.min_size, max_size=hyp_max_size),
-        level=st.just(0),
+        level=st.integers(min_value=0, max_value=1),
     )
     @settings(
         max_examples=max_per_worker if max_per_worker else 10**9,
@@ -504,7 +504,7 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
     print(f"  Crash dir:    {config.crash_dir}")
     print(f"  Workers:      {num_workers}")
     print(f"  Size range:   {config.min_size} - {config.max_size} bytes")
-    print(f"  Levels:       0 (Uncompressed only)")
+    print(f"  Levels:       0 (Uncompressed), 1 (Fastest)")
     if max_iterations:
         print(f"  Iterations:   {max_iterations} total (~{max_per_worker} per worker)")
     else:
@@ -631,8 +631,8 @@ Examples:
     parser.add_argument(
         "--min-size",
         type=str,
-        default="0",
-        help="Minimum file size (supports K/M/G suffix, default: 0)",
+        default="1K",
+        help="Minimum file size (supports K/M/G suffix, default: 1K)",
     )
     parser.add_argument(
         "--max-size",

@@ -3,6 +3,15 @@
 This document records the changes made between versions, starting with version 0.5.0
 
 # After 0.8.2 (Current)
+* Fix latent encoding bugs found via compression fuzzing and RFC 8878 review:
+  - `encode_match_len` ML code 52: wrong baseline (`len - 32771` → `len - 65539`)
+  - `encode_seqnum` 2-byte format: allowed first byte 0xFF (3-byte sentinel); range narrowed to 128..=0x7EFF
+  - `encode_seqnum` 3-byte format: byte order was big-endian; fixed to little-endian per RFC 8878
+  - `write_bits_64` debug assertion strengthened to correctly detect overflowing values
+* Fix `interop.rs` fuzz target: exhausted reader was passed to `compress_to_vec` instead of the buffered input; `encode_ruzstd_compressed` now uses `CompressionLevel::Fastest`
+* Compression fuzzer (`scripts/fuzz_compress.py`) now defaults to level 1 (Fastest) with 1 KB minimum input size
+* Add `scripts/regression_compress.py` for compression regression tests
+* Add `docs/compression_fuzzing_findings.md` documenting all findings
 * Introduce the `rust-version` field
 
 # After 0.8.1

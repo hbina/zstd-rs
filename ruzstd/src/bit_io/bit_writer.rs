@@ -172,9 +172,10 @@ impl<V: AsMut<Vec<u8>>> BitWriter<V> {
             return;
         }
 
-        if bits > 0 {
-            debug_assert!(bits.ilog2() <= num_bits as u32);
-        }
+        debug_assert!(
+            num_bits >= 64 || bits < (1u64 << num_bits),
+            "bits={bits} does not fit in {num_bits} bits"
+        );
 
         // fill partial byte first
         if num_bits + self.bits_in_partial < 64 {

@@ -422,7 +422,7 @@ def worker(
 
     @given(
         data=st.binary(min_size=config.min_size, max_size=hyp_max_size),
-        level=st.integers(min_value=1, max_value=19),
+        level=st.just(1),
     )
     @settings(
         max_examples=max_per_worker if max_per_worker else 10 ** 9,

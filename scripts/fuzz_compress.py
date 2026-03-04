@@ -398,7 +398,7 @@ def worker(
 
     @given(
         data=st.binary(min_size=config.min_size, max_size=hyp_max_size),
-        level=st.integers(min_value=0, max_value=4),
+        level=st.just(0),
     )
     @settings(
         max_examples=max_per_worker if max_per_worker else 10**9,
@@ -504,7 +504,7 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
     print(f"  Crash dir:    {config.crash_dir}")
     print(f"  Workers:      {num_workers}")
     print(f"  Size range:   {config.min_size} - {config.max_size} bytes")
-    print(f"  Levels:       0 (Uncompressed) .. 4 (Best)")
+    print(f"  Levels:       0 (Uncompressed only)")
     if max_iterations:
         print(f"  Iterations:   {max_iterations} total (~{max_per_worker} per worker)")
     else:

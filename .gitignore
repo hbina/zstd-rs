@@ -9,3 +9,4 @@ perf.data*
 fuzz/corpus
 .idea
 .claude
+.hypothesis

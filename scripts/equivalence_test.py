@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Equivalence Testing Script for ruzstd vs Reference zstd Implementation
 

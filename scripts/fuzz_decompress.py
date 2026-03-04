@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Continuous Decompression Fuzzer for ruzstd (Parallel + Hypothesis)
 

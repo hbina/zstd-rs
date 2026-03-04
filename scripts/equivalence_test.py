@@ -38,9 +38,11 @@ from typing import List, Optional, Tuple
 # Configuration
 # =============================================================================
 
+
 @dataclass
 class TestConfig:
     """Configuration for the equivalence test suite."""
+
     workspace_root: Path
     temp_dir: Path
     ruzstd_binary: Path
@@ -54,6 +56,7 @@ class TestConfig:
 
 class CompressionLevel(Enum):
     """Compression levels supported by ruzstd."""
+
     UNCOMPRESSED = 0
     FASTEST = 1
     DEFAULT = 2
@@ -63,6 +66,7 @@ class CompressionLevel(Enum):
 
 class TestResult(Enum):
     """Result of a single test case."""
+
     PASSED = "PASSED"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
@@ -72,6 +76,7 @@ class TestResult(Enum):
 @dataclass
 class TestCase:
     """A single test case."""
+
     name: str
     description: str
     result: TestResult
@@ -84,12 +89,13 @@ class TestCase:
 # Utility Functions
 # =============================================================================
 
+
 def run_command(
     cmd: List[str],
     timeout: int = 300,
     capture_output: bool = True,
     check: bool = True,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> subprocess.CompletedProcess:
     """Run a command and return the result."""
     if verbose:
@@ -97,11 +103,7 @@ def run_command(
 
     try:
         result = subprocess.run(
-            cmd,
-            capture_output=capture_output,
-            timeout=timeout,
-            check=check,
-            text=True
+            cmd, capture_output=capture_output, timeout=timeout, check=check, text=True
         )
         return result
     except subprocess.CalledProcessError as e:
@@ -119,8 +121,8 @@ def run_command(
 def compute_file_hash(filepath: Path) -> str:
     """Compute SHA256 hash of a file."""
     sha256 = hashlib.sha256()
-    with open(filepath, 'rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
             sha256.update(chunk)
     return sha256.hexdigest()
 
@@ -198,10 +200,46 @@ def generate_text_data(size: int, seed: Optional[int] = None) -> bytes:
         random.seed(seed)
 
     words = [
-        "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
-        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
-        "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
-        "or", "an", "will", "my", "one", "all", "would", "there", "their", "what"
+        "the",
+        "be",
+        "to",
+        "of",
+        "and",
+        "a",
+        "in",
+        "that",
+        "have",
+        "I",
+        "it",
+        "for",
+        "not",
+        "on",
+        "with",
+        "he",
+        "as",
+        "you",
+        "do",
+        "at",
+        "this",
+        "but",
+        "his",
+        "by",
+        "from",
+        "they",
+        "we",
+        "say",
+        "her",
+        "she",
+        "or",
+        "an",
+        "will",
+        "my",
+        "one",
+        "all",
+        "would",
+        "there",
+        "their",
+        "what",
     ]
 
     result = []
@@ -213,17 +251,20 @@ def generate_text_data(size: int, seed: Optional[int] = None) -> bytes:
         if random.random() < 0.05:
             word = word.upper()
 
-        separator = " " if random.random() > 0.1 else random.choice(["\n", "  ", ". ", ", "])
+        separator = (
+            " " if random.random() > 0.1 else random.choice(["\n", "  ", ". ", ", "])
+        )
         chunk = word + separator
         result.append(chunk)
         current_size += len(chunk)
 
-    return ''.join(result)[:size].encode('utf-8')
+    return "".join(result)[:size].encode("utf-8")
 
 
 # =============================================================================
 # Test Data Generators
 # =============================================================================
+
 
 class TestDataGenerator:
     """Generates various types of test data."""
@@ -280,13 +321,13 @@ class TestDataGenerator:
     def create_all_zeros_file(self, size: int) -> Path:
         """Create a file filled with zeros."""
         filepath = self._next_filename(f"zeros_{size}")
-        filepath.write_bytes(b'\x00' * size)
+        filepath.write_bytes(b"\x00" * size)
         return filepath
 
     def create_all_ones_file(self, size: int) -> Path:
         """Create a file filled with 0xFF bytes."""
         filepath = self._next_filename(f"ones_{size}")
-        filepath.write_bytes(b'\xff' * size)
+        filepath.write_bytes(b"\xff" * size)
         return filepath
 
     def create_sequential_file(self, size: int) -> Path:
@@ -299,7 +340,7 @@ class TestDataGenerator:
     def create_dev_urandom_file(self, size: int) -> Path:
         """Create a file from /dev/urandom."""
         filepath = self._next_filename(f"urandom_{size}")
-        with open('/dev/urandom', 'rb') as urandom:
+        with open("/dev/urandom", "rb") as urandom:
             data = urandom.read(size)
         filepath.write_bytes(data)
         return filepath
@@ -308,6 +349,7 @@ class TestDataGenerator:
 # =============================================================================
 # Test Runner
 # =============================================================================
+
 
 class EquivalenceTestRunner:
     """Runs equivalence tests between ruzstd and reference zstd."""
@@ -326,7 +368,7 @@ class EquivalenceTestRunner:
         self,
         input_file: Path,
         output_file: Path,
-        level: CompressionLevel = CompressionLevel.FASTEST
+        level: CompressionLevel = CompressionLevel.FASTEST,
     ) -> bool:
         """Run ruzstd compress command."""
         cmd = [
@@ -334,7 +376,8 @@ class EquivalenceTestRunner:
             "compress",
             str(input_file),
             str(output_file),
-            "-l", str(level.value)
+            "-l",
+            str(level.value),
         ]
         try:
             run_command(cmd, verbose=self.config.verbose)
@@ -343,17 +386,13 @@ class EquivalenceTestRunner:
             self._log(f"  ruzstd compress failed: {e}")
             return False
 
-    def _run_ruzstd_decompress(
-        self,
-        input_file: Path,
-        output_file: Path
-    ) -> bool:
+    def _run_ruzstd_decompress(self, input_file: Path, output_file: Path) -> bool:
         """Run ruzstd decompress command."""
         cmd = [
             str(self.config.ruzstd_binary),
             "decompress",
             str(input_file),
-            str(output_file)
+            str(output_file),
         ]
         try:
             run_command(cmd, verbose=self.config.verbose)
@@ -363,18 +402,16 @@ class EquivalenceTestRunner:
             return False
 
     def _run_zstd_compress(
-        self,
-        input_file: Path,
-        output_file: Path,
-        level: int = 1
+        self, input_file: Path, output_file: Path, level: int = 1
     ) -> bool:
         """Run reference zstd compress command."""
         cmd = [
             self.config.zstd_binary,
             "-f",  # Force overwrite
             f"-{level}",  # Compression level
-            "-o", str(output_file),
-            str(input_file)
+            "-o",
+            str(output_file),
+            str(input_file),
         ]
         try:
             run_command(cmd, verbose=self.config.verbose)
@@ -383,18 +420,15 @@ class EquivalenceTestRunner:
             self._log(f"  zstd compress failed: {e}")
             return False
 
-    def _run_zstd_decompress(
-        self,
-        input_file: Path,
-        output_file: Path
-    ) -> bool:
+    def _run_zstd_decompress(self, input_file: Path, output_file: Path) -> bool:
         """Run reference zstd decompress command."""
         cmd = [
             self.config.zstd_binary,
             "-d",  # Decompress
             "-f",  # Force overwrite
-            "-o", str(output_file),
-            str(input_file)
+            "-o",
+            str(output_file),
+            str(input_file),
         ]
         try:
             run_command(cmd, verbose=self.config.verbose)
@@ -407,7 +441,7 @@ class EquivalenceTestRunner:
         self,
         test_name: str,
         input_file: Path,
-        level: CompressionLevel = CompressionLevel.FASTEST
+        level: CompressionLevel = CompressionLevel.FASTEST,
     ) -> TestCase:
         """
         Test: ruzstd compresses a file, zstd decompresses it.
@@ -415,8 +449,8 @@ class EquivalenceTestRunner:
         """
         start_time = time.time()
 
-        compressed_file = input_file.with_suffix('.zst')
-        decompressed_file = input_file.with_suffix('.decompressed')
+        compressed_file = input_file.with_suffix(".zst")
+        decompressed_file = input_file.with_suffix(".decompressed")
 
         try:
             # Compress with ruzstd
@@ -426,7 +460,7 @@ class EquivalenceTestRunner:
                     description=f"ruzstd compress -> zstd decompress (level {level.value})",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="ruzstd compression failed"
+                    error_message="ruzstd compression failed",
                 )
 
             # Decompress with zstd
@@ -436,7 +470,7 @@ class EquivalenceTestRunner:
                     description=f"ruzstd compress -> zstd decompress (level {level.value})",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="zstd decompression failed"
+                    error_message="zstd decompression failed",
                 )
 
             # Compare files
@@ -449,7 +483,7 @@ class EquivalenceTestRunner:
                 duration_ms=(time.time() - start_time) * 1000,
                 error_message=None if is_equal else message,
                 details=f"Input size: {input_file.stat().st_size} bytes, "
-                       f"Compressed: {compressed_file.stat().st_size} bytes"
+                f"Compressed: {compressed_file.stat().st_size} bytes",
             )
 
         except Exception as e:
@@ -458,7 +492,7 @@ class EquivalenceTestRunner:
                 description=f"ruzstd compress -> zstd decompress (level {level.value})",
                 result=TestResult.ERROR,
                 duration_ms=(time.time() - start_time) * 1000,
-                error_message=str(e)
+                error_message=str(e),
             )
         finally:
             # Cleanup
@@ -467,10 +501,7 @@ class EquivalenceTestRunner:
                     f.unlink()
 
     def test_zstd_compress_ruzstd_decompress(
-        self,
-        test_name: str,
-        input_file: Path,
-        level: int = 1
+        self, test_name: str, input_file: Path, level: int = 1
     ) -> TestCase:
         """
         Test: zstd compresses a file, ruzstd decompresses it.
@@ -478,8 +509,8 @@ class EquivalenceTestRunner:
         """
         start_time = time.time()
 
-        compressed_file = input_file.with_suffix('.zst')
-        decompressed_file = input_file.with_suffix('.decompressed')
+        compressed_file = input_file.with_suffix(".zst")
+        decompressed_file = input_file.with_suffix(".decompressed")
 
         try:
             # Compress with zstd
@@ -489,7 +520,7 @@ class EquivalenceTestRunner:
                     description=f"zstd compress (level {level}) -> ruzstd decompress",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="zstd compression failed"
+                    error_message="zstd compression failed",
                 )
 
             # Decompress with ruzstd
@@ -499,7 +530,7 @@ class EquivalenceTestRunner:
                     description=f"zstd compress (level {level}) -> ruzstd decompress",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="ruzstd decompression failed"
+                    error_message="ruzstd decompression failed",
                 )
 
             # Compare files
@@ -512,7 +543,7 @@ class EquivalenceTestRunner:
                 duration_ms=(time.time() - start_time) * 1000,
                 error_message=None if is_equal else message,
                 details=f"Input size: {input_file.stat().st_size} bytes, "
-                       f"Compressed: {compressed_file.stat().st_size} bytes"
+                f"Compressed: {compressed_file.stat().st_size} bytes",
             )
 
         except Exception as e:
@@ -521,7 +552,7 @@ class EquivalenceTestRunner:
                 description=f"zstd compress (level {level}) -> ruzstd decompress",
                 result=TestResult.ERROR,
                 duration_ms=(time.time() - start_time) * 1000,
-                error_message=str(e)
+                error_message=str(e),
             )
         finally:
             # Cleanup
@@ -533,7 +564,7 @@ class EquivalenceTestRunner:
         self,
         test_name: str,
         input_file: Path,
-        level: CompressionLevel = CompressionLevel.FASTEST
+        level: CompressionLevel = CompressionLevel.FASTEST,
     ) -> TestCase:
         """
         Test: ruzstd compress -> ruzstd decompress.
@@ -541,8 +572,8 @@ class EquivalenceTestRunner:
         """
         start_time = time.time()
 
-        compressed_file = input_file.with_suffix('.zst')
-        decompressed_file = input_file.with_suffix('.decompressed')
+        compressed_file = input_file.with_suffix(".zst")
+        decompressed_file = input_file.with_suffix(".decompressed")
 
         try:
             # Compress with ruzstd
@@ -552,7 +583,7 @@ class EquivalenceTestRunner:
                     description=f"ruzstd roundtrip (level {level.value})",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="ruzstd compression failed"
+                    error_message="ruzstd compression failed",
                 )
 
             # Decompress with ruzstd
@@ -562,7 +593,7 @@ class EquivalenceTestRunner:
                     description=f"ruzstd roundtrip (level {level.value})",
                     result=TestResult.ERROR,
                     duration_ms=(time.time() - start_time) * 1000,
-                    error_message="ruzstd decompression failed"
+                    error_message="ruzstd decompression failed",
                 )
 
             # Compare files
@@ -575,7 +606,7 @@ class EquivalenceTestRunner:
                 duration_ms=(time.time() - start_time) * 1000,
                 error_message=None if is_equal else message,
                 details=f"Input size: {input_file.stat().st_size} bytes, "
-                       f"Compressed: {compressed_file.stat().st_size} bytes"
+                f"Compressed: {compressed_file.stat().st_size} bytes",
             )
 
         except Exception as e:
@@ -584,7 +615,7 @@ class EquivalenceTestRunner:
                 description=f"ruzstd roundtrip (level {level.value})",
                 result=TestResult.ERROR,
                 duration_ms=(time.time() - start_time) * 1000,
-                error_message=str(e)
+                error_message=str(e),
             )
         finally:
             # Cleanup
@@ -601,23 +632,37 @@ class EquivalenceTestRunner:
         # Empty file
         print("  Testing empty file...")
         empty_file = self.generator.create_empty_file()
-        results.append(self.test_zstd_compress_ruzstd_decompress("empty_file", empty_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("empty_file", empty_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("empty_file", empty_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("empty_file", empty_file)
+        )
         results.append(self.test_roundtrip_ruzstd("empty_file_roundtrip", empty_file))
 
         # Single byte
         print("  Testing single byte file...")
         single_byte_file = self.generator.create_single_byte_file()
-        results.append(self.test_zstd_compress_ruzstd_decompress("single_byte", single_byte_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("single_byte", single_byte_file))
-        results.append(self.test_roundtrip_ruzstd("single_byte_roundtrip", single_byte_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("single_byte", single_byte_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("single_byte", single_byte_file)
+        )
+        results.append(
+            self.test_roundtrip_ruzstd("single_byte_roundtrip", single_byte_file)
+        )
 
         # All zeros (various sizes)
         for size in [100, 1000, 10000, 100000]:
             print(f"  Testing all zeros file ({size} bytes)...")
             zeros_file = self.generator.create_all_zeros_file(size)
-            results.append(self.test_zstd_compress_ruzstd_decompress(f"zeros_{size}", zeros_file))
-            results.append(self.test_ruzstd_compress_zstd_decompress(f"zeros_{size}", zeros_file))
+            results.append(
+                self.test_zstd_compress_ruzstd_decompress(f"zeros_{size}", zeros_file)
+            )
+            results.append(
+                self.test_ruzstd_compress_zstd_decompress(f"zeros_{size}", zeros_file)
+            )
 
         # All 0xFF bytes
         print("  Testing all 0xFF file...")
@@ -628,8 +673,12 @@ class EquivalenceTestRunner:
         # Sequential bytes
         print("  Testing sequential bytes file...")
         seq_file = self.generator.create_sequential_file(10000)
-        results.append(self.test_zstd_compress_ruzstd_decompress("sequential", seq_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("sequential", seq_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("sequential", seq_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("sequential", seq_file)
+        )
 
         return results
 
@@ -641,9 +690,36 @@ class EquivalenceTestRunner:
 
         # Powers of 2 and boundary sizes
         sizes = [
-            1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256,
-            511, 512, 1023, 1024, 2048, 4096, 8192, 16384, 32768, 65536,
-            131072, 262144, 524288, 1048576  # Up to 1MB
+            1,
+            2,
+            3,
+            4,
+            7,
+            8,
+            15,
+            16,
+            31,
+            32,
+            63,
+            64,
+            127,
+            128,
+            255,
+            256,
+            511,
+            512,
+            1023,
+            1024,
+            2048,
+            4096,
+            8192,
+            16384,
+            32768,
+            65536,
+            131072,
+            262144,
+            524288,
+            1048576,  # Up to 1MB
         ]
 
         # Filter sizes based on max_file_size config
@@ -652,8 +728,16 @@ class EquivalenceTestRunner:
         for size in sizes:
             print(f"  Testing compressible data ({size} bytes)...")
             comp_file = self.generator.create_compressible_file(size)
-            results.append(self.test_zstd_compress_ruzstd_decompress(f"compressible_{size}", comp_file))
-            results.append(self.test_ruzstd_compress_zstd_decompress(f"compressible_{size}", comp_file))
+            results.append(
+                self.test_zstd_compress_ruzstd_decompress(
+                    f"compressible_{size}", comp_file
+                )
+            )
+            results.append(
+                self.test_ruzstd_compress_zstd_decompress(
+                    f"compressible_{size}", comp_file
+                )
+            )
 
         return results
 
@@ -668,31 +752,51 @@ class EquivalenceTestRunner:
         # Highly compressible data
         print(f"  Testing highly compressible data ({test_size} bytes)...")
         hc_file = self.generator.create_highly_compressible_file(test_size)
-        results.append(self.test_zstd_compress_ruzstd_decompress("highly_compressible", hc_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("highly_compressible", hc_file))
-        results.append(self.test_roundtrip_ruzstd("highly_compressible_roundtrip", hc_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("highly_compressible", hc_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("highly_compressible", hc_file)
+        )
+        results.append(
+            self.test_roundtrip_ruzstd("highly_compressible_roundtrip", hc_file)
+        )
 
         # Text-like data
         print(f"  Testing text-like data ({test_size} bytes)...")
         text_file = self.generator.create_text_file(test_size)
-        results.append(self.test_zstd_compress_ruzstd_decompress("text_data", text_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("text_data", text_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("text_data", text_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("text_data", text_file)
+        )
         results.append(self.test_roundtrip_ruzstd("text_data_roundtrip", text_file))
 
         # Random (incompressible) data
         print(f"  Testing random data ({test_size} bytes)...")
         rand_file = self.generator.create_random_file(test_size)
-        results.append(self.test_zstd_compress_ruzstd_decompress("random_data", rand_file))
-        results.append(self.test_ruzstd_compress_zstd_decompress("random_data", rand_file))
+        results.append(
+            self.test_zstd_compress_ruzstd_decompress("random_data", rand_file)
+        )
+        results.append(
+            self.test_ruzstd_compress_zstd_decompress("random_data", rand_file)
+        )
         results.append(self.test_roundtrip_ruzstd("random_data_roundtrip", rand_file))
 
         # /dev/urandom data (truly random)
-        if os.path.exists('/dev/urandom'):
+        if os.path.exists("/dev/urandom"):
             print(f"  Testing /dev/urandom data ({test_size} bytes)...")
             urandom_file = self.generator.create_dev_urandom_file(test_size)
-            results.append(self.test_zstd_compress_ruzstd_decompress("urandom_data", urandom_file))
-            results.append(self.test_ruzstd_compress_zstd_decompress("urandom_data", urandom_file))
-            results.append(self.test_roundtrip_ruzstd("urandom_data_roundtrip", urandom_file))
+            results.append(
+                self.test_zstd_compress_ruzstd_decompress("urandom_data", urandom_file)
+            )
+            results.append(
+                self.test_ruzstd_compress_zstd_decompress("urandom_data", urandom_file)
+            )
+            results.append(
+                self.test_roundtrip_ruzstd("urandom_data_roundtrip", urandom_file)
+            )
 
         return results
 
@@ -708,11 +812,11 @@ class EquivalenceTestRunner:
         # Test zstd compression levels 1-19 (and 0 for no compression)
         for level in [1, 3, 5, 9, 15, 19]:
             print(f"  Testing zstd level {level}...")
-            results.append(self.test_zstd_compress_ruzstd_decompress(
-                f"zstd_level_{level}",
-                test_file,
-                level=level
-            ))
+            results.append(
+                self.test_zstd_compress_ruzstd_decompress(
+                    f"zstd_level_{level}", test_file, level=level
+                )
+            )
 
         return results
 
@@ -727,35 +831,38 @@ class EquivalenceTestRunner:
             size = random.randint(1, self.config.max_file_size)
 
             # Randomly choose data type
-            data_type = random.choice(['random', 'compressible', 'text', 'urandom'])
+            data_type = random.choice(["random", "compressible", "text", "urandom"])
 
-            print(f"  Test {i+1}/{self.config.num_random_tests}: {data_type} data, {size} bytes...")
+            print(
+                f"  Test {i + 1}/{self.config.num_random_tests}: {data_type} data, {size} bytes..."
+            )
 
-            if data_type == 'random':
+            if data_type == "random":
                 test_file = self.generator.create_random_file(size)
-            elif data_type == 'compressible':
+            elif data_type == "compressible":
                 test_file = self.generator.create_compressible_file(size)
-            elif data_type == 'text':
+            elif data_type == "text":
                 test_file = self.generator.create_text_file(size)
             else:  # urandom
-                if os.path.exists('/dev/urandom'):
+                if os.path.exists("/dev/urandom"):
                     test_file = self.generator.create_dev_urandom_file(size)
                 else:
                     test_file = self.generator.create_random_file(size)
 
             # Test both directions
-            results.append(self.test_zstd_compress_ruzstd_decompress(
-                f"random_test_{i+1}_zstd",
-                test_file
-            ))
-            results.append(self.test_ruzstd_compress_zstd_decompress(
-                f"random_test_{i+1}_ruzstd",
-                test_file
-            ))
-            results.append(self.test_roundtrip_ruzstd(
-                f"random_test_{i+1}_roundtrip",
-                test_file
-            ))
+            results.append(
+                self.test_zstd_compress_ruzstd_decompress(
+                    f"random_test_{i + 1}_zstd", test_file
+                )
+            )
+            results.append(
+                self.test_ruzstd_compress_zstd_decompress(
+                    f"random_test_{i + 1}_ruzstd", test_file
+                )
+            )
+            results.append(
+                self.test_roundtrip_ruzstd(f"random_test_{i + 1}_roundtrip", test_file)
+            )
 
         return results
 
@@ -776,6 +883,7 @@ class EquivalenceTestRunner:
 # Report Generation
 # =============================================================================
 
+
 def print_results_summary(results: List[TestCase]):
     """Print a summary of test results."""
     passed = sum(1 for r in results if r.result == TestResult.PASSED)
@@ -790,7 +898,11 @@ def print_results_summary(results: List[TestCase]):
     print("TEST RESULTS SUMMARY")
     print("=" * 70)
     print(f"  Total tests:  {total}")
-    print(f"  Passed:       {passed} ({100*passed/total:.1f}%)" if total > 0 else "  Passed:       0")
+    print(
+        f"  Passed:       {passed} ({100 * passed / total:.1f}%)"
+        if total > 0
+        else "  Passed:       0"
+    )
     print(f"  Failed:       {failed}")
     print(f"  Errors:       {errors}")
     print(f"  Skipped:      {skipped}")
@@ -819,6 +931,7 @@ def print_results_summary(results: List[TestCase]):
 # Main Entry Point
 # =============================================================================
 
+
 def check_prerequisites(config: TestConfig) -> bool:
     """Check that all prerequisites are met."""
     print("Checking prerequisites...")
@@ -826,7 +939,9 @@ def check_prerequisites(config: TestConfig) -> bool:
     # Check for reference zstd
     try:
         result = run_command([config.zstd_binary, "--version"], check=False)
-        print(f"  Found zstd: {result.stdout.strip() if result.stdout else 'version unknown'}")
+        print(
+            f"  Found zstd: {result.stdout.strip() if result.stdout else 'version unknown'}"
+        )
     except FileNotFoundError:
         print(f"  ERROR: Reference zstd not found at '{config.zstd_binary}'")
         print("  Please install zstd (apt install zstd / brew install zstd)")
@@ -835,7 +950,9 @@ def check_prerequisites(config: TestConfig) -> bool:
     # Check for cargo
     try:
         result = run_command(["cargo", "--version"], check=False)
-        print(f"  Found cargo: {result.stdout.strip() if result.stdout else 'version unknown'}")
+        print(
+            f"  Found cargo: {result.stdout.strip() if result.stdout else 'version unknown'}"
+        )
     except FileNotFoundError:
         print("  ERROR: cargo not found")
         print("  Please install the Rust toolchain")
@@ -859,7 +976,7 @@ def build_project(config: TestConfig) -> bool:
         result = run_command(
             ["cargo", "build", "--release", "-p", "ruzstd-cli"],
             verbose=config.verbose,
-            timeout=600
+            timeout=600,
         )
         print("  Build successful")
 
@@ -886,55 +1003,51 @@ def main():
         description="Equivalence testing for ruzstd vs reference zstd"
     )
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Enable verbose output"
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
     parser.add_argument(
-        "-n", "--num-random-tests",
+        "-n",
+        "--num-random-tests",
         type=int,
         default=50,
-        help="Number of random test iterations (default: 50)"
+        help="Number of random test iterations (default: 50)",
     )
     parser.add_argument(
-        "-m", "--max-file-size",
+        "-m",
+        "--max-file-size",
         type=int,
         default=10 * 1024 * 1024,  # 10 MB
-        help="Maximum file size for tests in bytes (default: 10MB)"
+        help="Maximum file size for tests in bytes (default: 10MB)",
     )
     parser.add_argument(
-        "-w", "--workers",
+        "-w",
+        "--workers",
         type=int,
         default=1,
-        help="Number of parallel workers (default: 1)"
+        help="Number of parallel workers (default: 1)",
     )
     parser.add_argument(
-        "-s", "--seed",
-        type=int,
-        default=None,
-        help="Random seed for reproducibility"
+        "-s", "--seed", type=int, default=None, help="Random seed for reproducibility"
     )
     parser.add_argument(
         "--zstd",
         type=str,
         default="zstd",
-        help="Path to reference zstd binary (default: zstd)"
+        help="Path to reference zstd binary (default: zstd)",
     )
     parser.add_argument(
         "--workspace",
         type=str,
         default=None,
-        help="Path to workspace root (default: auto-detect)"
+        help="Path to workspace root (default: auto-detect)",
     )
     parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="Skip the cargo build step"
+        "--skip-build", action="store_true", help="Skip the cargo build step"
     )
     parser.add_argument(
         "--keep-temp",
         action="store_true",
-        help="Keep temporary files after test completion"
+        help="Keep temporary files after test completion",
     )
 
     args = parser.parse_args()
@@ -954,7 +1067,7 @@ def main():
     print("=" * 70)
     print(f"Workspace: {workspace_root}")
     print(f"Random tests: {args.num_random_tests}")
-    print(f"Max file size: {args.max_file_size / (1024*1024):.1f} MB")
+    print(f"Max file size: {args.max_file_size / (1024 * 1024):.1f} MB")
     if args.seed is not None:
         print(f"Random seed: {args.seed}")
         random.seed(args.seed)
@@ -975,7 +1088,7 @@ def main():
             num_random_tests=args.num_random_tests,
             max_file_size=args.max_file_size,
             num_workers=args.workers,
-            seed=args.seed
+            seed=args.seed,
         )
 
         # Check prerequisites

@@ -5,7 +5,7 @@ Continuous Decompression Fuzzer for ruzstd (Parallel + Hypothesis)
 This script performs continuous parallel fuzzing of the ruzstd decompressor by:
 1. Building the ruzstd-cli binary
 2. Spawning multiple worker processes simultaneously
-3. Each worker uses hypothesis (if installed) for property-based test generation,
+3. Each worker uses hypothesis for property-based test generation,
    which automatically shrinks failing cases to minimal reproducers
 4. Compressing with reference zstd, decompressing with both zstd and ruzstd
 5. Verifying 3-way equivalence (original == zstd_decompressed == ruzstd_decompressed)
@@ -23,14 +23,13 @@ Requirements:
     - Rust toolchain (cargo)
     - Reference zstd CLI tool (apt install zstd / brew install zstd)
     - Python 3.7+
-    - hypothesis (pip install hypothesis)  [optional, enables smarter generation + shrinking]
+    - hypothesis (pip install hypothesis)
 """
 
 import argparse
 import hashlib
 import multiprocessing
 import queue
-import random
 import shutil
 import subprocess
 import sys
@@ -38,6 +37,9 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional, Tuple
+
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
 
 # =============================================================================
@@ -58,11 +60,9 @@ class Config:
         self.max_size = 10 * 1024 * 1024  # 10 MB
         self.report_interval = 100
         self.verbose = False
-        self.seed = None
         self.workers = multiprocessing.cpu_count()
 
     def _find_workspace_root(self) -> Path:
-        """Find the workspace root by looking for Cargo.toml."""
         script_dir = Path(__file__).parent.resolve()
         workspace = script_dir.parent
         if (workspace / "Cargo.toml").exists():
@@ -107,7 +107,6 @@ class FuzzStats:
 
     def print_summary(self):
         runtime = self.get_runtime()
-        rate = self.get_rate()
         avg_ratio = self.get_avg_compression_ratio()
 
         print(f"\n{'=' * 70}")
@@ -115,11 +114,9 @@ class FuzzStats:
         print(f"{'=' * 70}")
         print(f"  Iterations:          {self.iterations}")
         print(f"  Runtime:             {runtime:.1f}s")
-        print(f"  Rate:                {rate:.1f} iter/sec")
+        print(f"  Rate:                {self.get_rate():.1f} iter/sec")
         print(f"  Data tested:         {self._format_size(self.total_bytes_tested)}")
-        print(
-            f"  Data compressed:     {self._format_size(self.total_bytes_compressed)}"
-        )
+        print(f"  Data compressed:     {self._format_size(self.total_bytes_compressed)}")
         print(f"  Avg compression:     {avg_ratio * 100:.1f}%")
         print(f"  Crashes:             {self.crashes}")
         print(f"{'=' * 70}")
@@ -159,7 +156,7 @@ def compute_hash(filepath: Path) -> str:
 
 
 def compare_files_3way(
-    original: Path, zstd_out: Path, ruzstd_out: Path
+        original: Path, zstd_out: Path, ruzstd_out: Path
 ) -> Tuple[bool, str]:
     for f in [original, zstd_out, ruzstd_out]:
         if not f.exists():
@@ -179,15 +176,9 @@ def compare_files_3way(
     ruzstd_hash = compute_hash(ruzstd_out)
 
     if orig_hash != zstd_hash:
-        return (
-            False,
-            f"Hash mismatch: original({orig_hash[:16]}...) != zstd({zstd_hash[:16]}...)",
-        )
+        return False, f"Hash mismatch: original({orig_hash[:16]}...) != zstd({zstd_hash[:16]}...)"
     if orig_hash != ruzstd_hash:
-        return (
-            False,
-            f"Hash mismatch: original({orig_hash[:16]}...) != ruzstd({ruzstd_hash[:16]}...)",
-        )
+        return False, f"Hash mismatch: original({orig_hash[:16]}...) != ruzstd({ruzstd_hash[:16]}...)"
 
     return True, "All files identical"
 
@@ -198,16 +189,9 @@ def compare_files_3way(
 
 
 def compress_with_zstd(
-    config: Config, input_path: Path, output_path: Path, level: int
+        config: Config, input_path: Path, output_path: Path, level: int
 ) -> bool:
-    cmd = [
-        config.zstd_binary,
-        "-f",
-        f"-{level}",
-        "-o",
-        str(output_path),
-        str(input_path),
-    ]
+    cmd = [config.zstd_binary, "-f", f"-{level}", "-o", str(output_path), str(input_path)]
     try:
         run_command(cmd)
         return True
@@ -245,13 +229,13 @@ def decompress_with_ruzstd(config: Config, input_path: Path, output_path: Path) 
 
 
 def save_crash_case(
-    config: Config,
-    iteration: int,
-    worker_id: int,
-    original_data: bytes,
-    compressed_data: bytes,
-    level: int,
-    error: str,
+        config: Config,
+        iteration: int,
+        worker_id: int,
+        original_data: bytes,
+        compressed_data: bytes,
+        level: int,
+        error: str,
 ) -> Path:
     """Save crash artifacts for debugging. Returns the crash directory."""
     config.crash_dir.mkdir(exist_ok=True)
@@ -274,22 +258,22 @@ def save_crash_case(
 
 
 # =============================================================================
-# Core test logic (shared by both worker types)
+# Core test logic
 # =============================================================================
 
 
 def _run_single_test(
-    config: Config,
-    worker_temp: Path,
-    data: bytes,
-    level: int,
-    prefix: str,
+        config: Config,
+        worker_temp: Path,
+        data: bytes,
+        level: int,
+        prefix: str,
 ) -> Tuple[bool, int, bytes, str]:
     """
     Compress data, then decompress with both zstd and ruzstd, and compare.
 
     Returns (success, compressed_size, compressed_bytes, error_message).
-    compressed_bytes is populated on failure for crash artifact saving.
+    compressed_bytes is only populated on failure (for crash artifact saving).
     """
     original = worker_temp / f"{prefix}_orig.bin"
     compressed = worker_temp / f"{prefix}_comp.zst"
@@ -303,85 +287,53 @@ def _run_single_test(
             return True, 0, b"", ""  # skip – not a ruzstd bug
 
         compressed_size = compressed.stat().st_size
-        compressed_bytes = b""  # only read on failure to avoid overhead
 
         if not decompress_with_zstd(config, compressed, zstd_out):
             return True, compressed_size, b"", ""  # skip
 
         if not decompress_with_ruzstd(config, compressed, ruzstd_out):
-            compressed_bytes = compressed.read_bytes()
-            return (
-                False,
-                compressed_size,
-                compressed_bytes,
-                "ruzstd decompression failed",
-            )
+            return False, compressed_size, compressed.read_bytes(), "ruzstd decompression failed"
 
         success, message = compare_files_3way(original, zstd_out, ruzstd_out)
         if not success:
-            compressed_bytes = compressed.read_bytes()
-            return (
-                False,
-                compressed_size,
-                compressed_bytes,
-                f"3-way comparison failed: {message}",
-            )
+            return False, compressed_size, compressed.read_bytes(), f"3-way comparison failed: {message}"
 
         return True, compressed_size, b"", ""
 
     finally:
         for f in [original, compressed, zstd_out, ruzstd_out]:
-            try:
-                f.unlink(missing_ok=True)
-            except Exception:
-                pass
+            f.unlink(missing_ok=True)
 
 
 # =============================================================================
-# Worker: hypothesis-based (property-based testing with automatic shrinking)
+# Worker
 # =============================================================================
 
 
-def hypothesis_worker(
-    worker_id: int,
-    config: Config,
-    stop_event,
-    result_queue,
-    max_per_worker: Optional[int],
+def worker(
+        worker_id: int,
+        config: Config,
+        stop_event,
+        result_queue,
+        max_per_worker: Optional[int],
 ):
     """
-    Worker process that uses hypothesis for property-based test generation.
+    Worker process using hypothesis for property-based test generation.
 
-    Hypothesis provides:
-    - Structured binary data generation with coverage-guided mutation
-    - Automatic test case shrinking: when a bug is found, hypothesis reduces
-      the input to the smallest case that still triggers the failure
-    - An example database that remembers past failures across runs
+    Hypothesis generates structured binary inputs and automatically shrinks any
+    failing case to the smallest input that still triggers the bug.
 
-    The strategy used:
-    - st.binary() generates arbitrary byte strings (including edge cases like
-      empty inputs, single bytes, repeated patterns)
-    - st.integers(1, 19) covers all zstd compression levels
-    - Hypothesis explores the space systematically, not just randomly
+    The _is_shrinking flag prevents stop_event from aborting hypothesis's shrink
+    phase, which would produce a larger (non-minimal) crash artifact.
     """
-    try:
-        from hypothesis import HealthCheck, assume, given, settings
-        from hypothesis import strategies as st
-    except ImportError:
-        print(f"[Worker {worker_id}] hypothesis not installed, using random fallback")
-        random_worker(worker_id, config, stop_event, result_queue, max_per_worker)
-        return
-
     worker_temp = config.temp_dir / f"w{worker_id}"
     worker_temp.mkdir(exist_ok=True, parents=True)
 
     counter = [0]
-    # Mutable cells so the inner function and the outer scope share state.
-    # _is_shrinking prevents stop_event from aborting hypothesis's shrink phase.
     last_failure = [None]  # (data, level, compressed_bytes, error)
     is_shrinking = [False]
 
-    # Cap max_size for hypothesis: shrinking very large binaries is extremely slow.
+    # Cap max_size: shrinking very large binaries is extremely slow.
     hyp_max_size = min(config.max_size, 1 * 1024 * 1024)
 
     @given(
@@ -389,21 +341,18 @@ def hypothesis_worker(
         level=st.integers(min_value=1, max_value=19),
     )
     @settings(
-        max_examples=max_per_worker if max_per_worker else 10**9,
+        max_examples=max_per_worker if max_per_worker else 10 ** 9,
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )
     def property_check(data: bytes, level: int) -> None:
-        # Honour stop requests from other workers, but never during shrinking –
-        # that would prevent hypothesis from finding the minimal failing case.
+        # Honour external stop requests, but never during shrinking.
         if stop_event.is_set() and not is_shrinking[0]:
             assume(False)
 
         counter[0] += 1
-        prefix = f"w{worker_id}_{counter[0]}"
-
         success, compressed_size, compressed_bytes, error = _run_single_test(
-            config, worker_temp, data, level, prefix
+            config, worker_temp, data, level, f"w{worker_id}_{counter[0]}"
         )
 
         if not success:
@@ -421,71 +370,8 @@ def hypothesis_worker(
     finally:
         if last_failure[0] is not None:
             data, level, compressed_bytes, error = last_failure[0]
-            result_queue.put(
-                ("crash", worker_id, counter[0], data, level, compressed_bytes, error)
-            )
+            result_queue.put(("crash", worker_id, counter[0], data, level, compressed_bytes, error))
             stop_event.set()
-        shutil.rmtree(worker_temp, ignore_errors=True)
-
-
-# =============================================================================
-# Worker: random-based (fallback when hypothesis is not installed)
-# =============================================================================
-
-
-def random_worker(
-    worker_id: int,
-    config: Config,
-    stop_event,
-    result_queue,
-    max_per_worker: Optional[int],
-):
-    """
-    Worker process that uses random data generation.
-    Used as fallback when hypothesis is not installed.
-    """
-    worker_temp = config.temp_dir / f"w{worker_id}"
-    worker_temp.mkdir(exist_ok=True, parents=True)
-
-    rng = random.Random()
-    if config.seed is not None:
-        rng.seed(config.seed + worker_id * 1000)
-
-    iteration = 0
-    try:
-        while not stop_event.is_set():
-            if max_per_worker and iteration >= max_per_worker:
-                break
-
-            iteration += 1
-            size = rng.randint(config.min_size, config.max_size)
-            data = bytes(rng.getrandbits(8) for _ in range(size))
-            level = rng.randint(1, 19)
-            prefix = f"w{worker_id}_{iteration}"
-
-            success, compressed_size, compressed_bytes, error = _run_single_test(
-                config, worker_temp, data, level, prefix
-            )
-
-            if not success:
-                result_queue.put(
-                    (
-                        "crash",
-                        worker_id,
-                        iteration,
-                        data,
-                        level,
-                        compressed_bytes,
-                        error,
-                    )
-                )
-                stop_event.set()
-                break
-
-            if compressed_size > 0:
-                result_queue.put(("ok", len(data), compressed_size))
-
-    finally:
         shutil.rmtree(worker_temp, ignore_errors=True)
 
 
@@ -523,9 +409,7 @@ def check_prerequisites(config: Config) -> bool:
         return False
 
     try:
-        result = subprocess.run(
-            ["cargo", "--version"], capture_output=True, check=False
-        )
+        result = subprocess.run(["cargo", "--version"], capture_output=True, check=False)
         version = result.stdout.decode().strip() if result.stdout else "version unknown"
         print(f"  Found cargo: {version}")
     except FileNotFoundError:
@@ -533,16 +417,8 @@ def check_prerequisites(config: Config) -> bool:
         print("  Install the Rust toolchain from https://rustup.rs")
         return False
 
-    try:
-        import hypothesis
-
-        print(
-            f"  Found hypothesis: {hypothesis.__version__} (property-based testing + shrinking enabled)"
-        )
-    except ImportError:
-        print(
-            "  hypothesis not found (pip install hypothesis) – using random data generation"
-        )
+    import hypothesis
+    print(f"  Found hypothesis: {hypothesis.__version__}")
 
     print("  Prerequisites satisfied")
     return True
@@ -557,21 +433,9 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
     """Spawn parallel workers and coordinate until done, crashed, or interrupted."""
     stats = FuzzStats()
     num_workers = config.workers
-
-    # Divide iteration budget evenly across workers (None means unlimited).
     max_per_worker = (
         (max_iterations + num_workers - 1) // num_workers if max_iterations else None
     )
-
-    # Decide worker type once so the print below is accurate.
-    try:
-        import hypothesis  # noqa: F401
-
-        worker_fn = hypothesis_worker
-        mode = "hypothesis property-based testing (with automatic shrinking)"
-    except ImportError:
-        worker_fn = random_worker
-        mode = "random data generation"
 
     print(f"\nStarting parallel fuzzing...")
     print(f"  Workspace:    {config.workspace_root}")
@@ -579,10 +443,7 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
     print(f"  Temp dir:     {config.temp_dir}")
     print(f"  Crash dir:    {config.crash_dir}")
     print(f"  Workers:      {num_workers}")
-    print(f"  Mode:         {mode}")
     print(f"  Size range:   {config.min_size} - {config.max_size} bytes")
-    if config.seed is not None:
-        print(f"  Random seed:  {config.seed}")
     if max_iterations:
         print(f"  Iterations:   {max_iterations} total (~{max_per_worker} per worker)")
     else:
@@ -592,23 +453,23 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
     stop_event = multiprocessing.Event()
     result_queue = multiprocessing.Queue()
 
-    workers = []
-    for i in range(num_workers):
-        p = multiprocessing.Process(
-            target=worker_fn,
+    workers = [
+        multiprocessing.Process(
+            target=worker,
             args=(i, config, stop_event, result_queue, max_per_worker),
             name=f"fuzz-worker-{i}",
             daemon=True,
         )
+        for i in range(num_workers)
+    ]
+    for p in workers:
         p.start()
-        workers.append(p)
 
     found_crash = False
     last_report_time = time.time()
 
     try:
         while True:
-            # Exit when all workers have finished.
             if all(not p.is_alive() for p in workers):
                 break
 
@@ -623,8 +484,8 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
 
                 now = time.time()
                 if config.verbose or (
-                    stats.iterations % config.report_interval == 0
-                    and now - last_report_time >= 1.0
+                        stats.iterations % config.report_interval == 0
+                        and now - last_report_time >= 1.0
                 ):
                     ratio = compressed_size / data_size * 100 if data_size > 0 else 0
                     print(
@@ -647,9 +508,7 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
                 print(f"  Data size:    {len(data)} bytes")
                 print(f"  Level:        {level}")
 
-                save_crash_case(
-                    config, iteration, worker_id, data, compressed_bytes, level, error
-                )
+                save_crash_case(config, iteration, worker_id, data, compressed_bytes, level, error)
                 print(f"\nFuzzing stopped due to bug discovery")
                 break
 
@@ -693,13 +552,11 @@ Examples:
   %(prog)s --workers 4                  # Use 4 parallel workers
   %(prog)s --iterations 1000            # Run 1000 total iterations
   %(prog)s --max-size 1M --verbose      # Test up to 1MB files with verbose output
-  %(prog)s --seed 42                    # Use specific random seed (random worker only)
         """,
     )
 
     parser.add_argument(
-        "-i",
-        "--iterations",
+        "-i", "--iterations",
         type=int,
         default=None,
         help="Maximum total iterations across all workers (default: unlimited)",
@@ -723,17 +580,9 @@ Examples:
         help="Maximum file size (supports K/M/G suffix, default: 10M)",
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
+        "-v", "--verbose",
         action="store_true",
         help="Enable verbose output",
-    )
-    parser.add_argument(
-        "-s",
-        "--seed",
-        type=int,
-        default=None,
-        help="Random seed for reproducibility (applies to random worker only)",
     )
     parser.add_argument(
         "--report-interval",
@@ -751,7 +600,7 @@ Examples:
 
     def parse_size(size_str: str) -> int:
         size_str = size_str.upper().strip()
-        multipliers = {"K": 1024, "M": 1024**2, "G": 1024**3}
+        multipliers = {"K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}
         for suffix, mult in multipliers.items():
             if size_str.endswith(suffix):
                 return int(float(size_str[:-1]) * mult)
@@ -762,11 +611,7 @@ Examples:
     config.max_size = parse_size(args.max_size)
     config.verbose = args.verbose
     config.report_interval = args.report_interval
-    config.seed = args.seed
     config.workers = args.workers
-
-    if config.seed is not None:
-        random.seed(config.seed)
 
     print("=" * 70)
     print("RUZSTD DECOMPRESSION FUZZER (PARALLEL + HYPOTHESIS)")
@@ -794,6 +639,5 @@ Examples:
 
 
 if __name__ == "__main__":
-    # Required on macOS / Windows for multiprocessing with spawn start method.
     multiprocessing.freeze_support()
     sys.exit(main())

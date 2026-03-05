@@ -9,10 +9,10 @@ use twox_hash::XxHash64;
 use core::hash::Hasher;
 
 use super::{
-    block_header::BlockHeader, frame_header::FrameHeader, levels::*,
-    match_generator::MatchGeneratorDriver, CompressionLevel, Matcher,
+    CompressionLevel, Matcher, block_header::BlockHeader, frame_header::FrameHeader, levels::*,
+    match_generator::MatchGeneratorDriver,
 };
-use crate::fse::fse_encoder::{default_ll_table, default_ml_table, default_of_table, FSETable};
+use crate::fse::fse_encoder::{FSETable, default_ll_table, default_ml_table, default_of_table};
 
 use crate::io::{Read, Write};
 
@@ -323,7 +323,9 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
+        decoder
+            .decode_all_to_vec(output.as_slice(), &mut decoded)
+            .unwrap();
         assert_eq!(mock_data, decoded);
 
         let mut decoded = Vec::new();
@@ -343,7 +345,9 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
+        decoder
+            .decode_all_to_vec(output.as_slice(), &mut decoded)
+            .unwrap();
         assert_eq!(mock_data, decoded);
     }
 
@@ -359,7 +363,9 @@ mod tests {
 
         let mut decoder = FrameDecoder::new();
         let mut decoded = Vec::with_capacity(mock_data.len());
-        decoder.decode_all_to_vec(output.as_slice(), &mut decoded).unwrap();
+        decoder
+            .decode_all_to_vec(output.as_slice(), &mut decoded)
+            .unwrap();
         assert_eq!(mock_data, decoded);
 
         let mut decoded = Vec::new();

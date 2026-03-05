@@ -487,8 +487,8 @@ fn test_streaming_no_std() {
 
 #[test]
 fn test_decode_all() {
-    use crate::decoding::errors::FrameDecoderError;
     use crate::decoding::FrameDecoder;
+    use crate::decoding::errors::FrameDecoderError;
 
     let skip_frame = |input: &mut Vec<u8>, length: usize| {
         input.extend_from_slice(&0x184D2A50u32.to_le_bytes());
@@ -551,7 +551,9 @@ fn test_decode_all() {
     // decode_all_to_vec with correct output capacity.
     let mut output = Vec::new();
     output.reserve_exact(original.len());
-    decoder.decode_all_to_vec(input.as_slice(), &mut output).unwrap();
+    decoder
+        .decode_all_to_vec(input.as_slice(), &mut output)
+        .unwrap();
     assert_eq!(output, original);
 
     // decode_all_to_vec with smaller output capacity.
@@ -567,7 +569,9 @@ fn test_decode_all() {
     // decode_all_to_vec with larger output capacity.
     let mut output = Vec::new();
     output.reserve_exact(original.len() + 1);
-    decoder.decode_all_to_vec(input.as_slice(), &mut output).unwrap();
+    decoder
+        .decode_all_to_vec(input.as_slice(), &mut output)
+        .unwrap();
     assert_eq!(output, original);
 }
 

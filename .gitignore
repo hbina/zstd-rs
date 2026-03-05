@@ -7,6 +7,7 @@ Cargo.lock
 fuzz_decodecorpus
 perf.data*
 fuzz/corpus
+ruzstd/fuzz/corpus
 .idea
 .claude
 .hypothesis

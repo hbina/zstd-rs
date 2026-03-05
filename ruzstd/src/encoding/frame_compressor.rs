@@ -282,6 +282,7 @@ mod tests {
     use super::FrameCompressor;
     use crate::common::MAGIC_NUM;
     use crate::decoding::FrameDecoder;
+    use crate::encoding::EncodeError;
     use alloc::vec::Vec;
 
     #[test]
@@ -468,7 +469,9 @@ mod tests {
             zstd::stream::encode_all(std::io::Cursor::new(data), 3)
         }
 
-        fn encode_ruzstd_uncompressed(data: &mut dyn std::io::Read) -> Vec<u8> {
+        fn encode_ruzstd_uncompressed(
+            data: &mut dyn std::io::Read,
+        ) -> Result<Vec<u8>, EncodeError> {
             let mut input = Vec::new();
             data.read_to_end(&mut input).unwrap();
 
@@ -478,7 +481,7 @@ mod tests {
             )
         }
 
-        fn encode_ruzstd_compressed(data: &mut dyn std::io::Read) -> Vec<u8> {
+        fn encode_ruzstd_compressed(data: &mut dyn std::io::Read) -> Result<Vec<u8>, EncodeError> {
             let mut input = Vec::new();
             data.read_to_end(&mut input).unwrap();
 
@@ -502,8 +505,8 @@ mod tests {
                     let compressed = encode_zstd(data).unwrap();
                     let decoded = decode_ruzstd(&mut compressed.as_slice());
                     let decoded2 = decode_ruzstd_writer(&mut compressed.as_slice());
-                    assert!(
-                        decoded == data,
+                    assert_eq!(
+                        decoded, data,
                         "Decoded data did not match the original input during decompression"
                     );
                     assert_eq!(
@@ -514,7 +517,7 @@ mod tests {
                     // Encoding
                     // Uncompressed encoding
                     let mut input = data;
-                    let compressed = encode_ruzstd_uncompressed(&mut input);
+                    let compressed = encode_ruzstd_uncompressed(&mut input).unwrap();
                     let decoded = decode_zstd(&compressed).unwrap();
                     assert_eq!(
                         decoded, data,
@@ -522,7 +525,7 @@ mod tests {
                     );
                     // Compressed encoding
                     let mut input = data;
-                    let compressed = encode_ruzstd_compressed(&mut input);
+                    let compressed = encode_ruzstd_compressed(&mut input).unwrap();
                     let decoded = decode_zstd(&compressed).unwrap();
                     assert_eq!(
                         decoded, data,

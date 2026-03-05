@@ -3,6 +3,12 @@
 This document records the changes made between versions, starting with version 0.5.0
 
 # After 0.8.2 (Current)
+* **BREAKING**: `encoding::compress()` now returns `Result<(), EncodeError>` instead of `()`
+* **BREAKING**: `encoding::compress_to_vec()` now returns `Result<Vec<u8>, EncodeError>` instead of `Vec<u8>`
+* **BREAKING**: `FrameCompressor::compress()` now returns `Result<(), EncodeError>` instead of `()`
+* Add `encoding::EncodeError` enum to represent compression errors; replaces panics with proper errors
+* Fix `BlockType::Reserved` in block decoder: `panic!` replaced with `Err(DecodeBlockContentError::ReservedBlockType)`
+* Fix `CompressionLevel` variants `Default`/`Better`/`Best` in compressor: `unimplemented!()` replaced with `Err(EncodeError::UnsupportedCompressionLevel(...))`
 * Fix latent encoding bugs found via compression fuzzing and RFC 8878 review:
   - `encode_match_len` ML code 52: wrong baseline (`len - 32771` → `len - 65539`)
   - `encode_seqnum` 2-byte format: allowed first byte 0xFF (3-byte sentinel); range narrowed to 128..=0x7EFF

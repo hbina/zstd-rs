@@ -119,7 +119,8 @@ fn compress(input: PathBuf, output: PathBuf, level: u8) -> color_eyre::Result<()
     let encoder_input = ProgressMonitor::new(buffered_source, source_size);
     let output: File = File::create(output).wrap_err("failed to open output file for writing")?;
 
-    ruzstd::encoding::compress(encoder_input, &output, compression_level);
+    ruzstd::encoding::compress(encoder_input, &output, compression_level)
+        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
     let compressed_size = output.metadata()?.len();
     let compression_ratio = compressed_size as f64 / source_size as f64 * 100.0;
     info!(

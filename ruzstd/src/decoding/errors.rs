@@ -355,6 +355,8 @@ pub enum DecodeBlockContentError {
     /// The source did not contain enough bytes to decode a complete block body.
     /// The caller should provide more data and retry.
     NeedMoreData,
+    /// A block with type `Reserved` was encountered. Per RFC 8878 this is invalid.
+    ReservedBlockType,
 }
 
 #[cfg(feature = "std")]
@@ -389,6 +391,9 @@ impl core::fmt::Display for DecodeBlockContentError {
             DecodeBlockContentError::DecompressBlockError(e) => write!(f, "{e:?}"),
             DecodeBlockContentError::NeedMoreData => {
                 write!(f, "Not enough bytes in source to decode block body")
+            }
+            DecodeBlockContentError::ReservedBlockType => {
+                write!(f, "Block type 'Reserved' is not valid per RFC 8878")
             }
         }
     }

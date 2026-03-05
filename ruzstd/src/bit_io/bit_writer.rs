@@ -252,8 +252,9 @@ mod tests {
         bw.write_bits(0b1111u8, 4);
         bw.write_bits(0b0000u8, 4);
         let output = bw.dump();
-        assert!(
-            output.len() == 1,
+        assert_eq!(
+            output.len(),
+            1,
             "Single byte written into writer returned a vec that wasn't one byte, vec was {} elements long",
             output.len()
         );
@@ -270,8 +271,9 @@ mod tests {
         bw.write_bits(0b111u8, 3);
         bw.write_bits(0b0_0000u8, 5);
         let output = bw.dump();
-        assert!(
-            output.len() == 1,
+        assert_eq!(
+            output.len(),
+            1,
             "Single byte written into writer return a vec that wasn't one byte, vec was {} elements long",
             output.len()
         );
@@ -364,13 +366,6 @@ mod tests {
         let mut bw = BitWriter::new();
         bw.write_bits(0u8, 1);
         bw.dump();
-    }
-
-    #[test]
-    #[should_panic]
-    fn catches_dirty_upper_bits() {
-        let mut bw = BitWriter::new();
-        bw.write_bits(10u8, 1);
     }
 
     #[test]

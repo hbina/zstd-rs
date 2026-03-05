@@ -2,12 +2,14 @@
 
 pub(crate) mod block_header;
 pub(crate) mod blocks;
+pub mod errors;
 pub(crate) mod frame_header;
 pub(crate) mod match_generator;
 pub(crate) mod util;
 
 mod frame_compressor;
 mod levels;
+pub use errors::EncodeError;
 pub use frame_compressor::FrameCompressor;
 pub use match_generator::MatchGeneratorDriver;
 
@@ -19,31 +21,38 @@ use alloc::vec::Vec;
 /// use ruzstd::encoding::{compress, CompressionLevel};
 /// let data: &[u8] = &[0,0,0,0,0,0,0,0,0,0,0,0];
 /// let mut target = Vec::new();
-/// compress(data, &mut target, CompressionLevel::Fastest);
+/// compress(data, &mut target, CompressionLevel::Fastest).unwrap();
 /// ```
-pub fn compress<R: Read, W: Write>(source: R, target: W, level: CompressionLevel) {
+pub fn compress<R: Read, W: Write>(
+    source: R,
+    target: W,
+    level: CompressionLevel,
+) -> Result<(), EncodeError> {
     let mut frame_enc = FrameCompressor::new(level);
     frame_enc.set_source(source);
     frame_enc.set_drain(target);
-    frame_enc.compress();
+    Ok(frame_enc.compress())
 }
 
 /// Convenience function to compress some source into a Vec without reusing any resources of the compressor
 /// ```rust
 /// use ruzstd::encoding::{compress_to_vec, CompressionLevel};
 /// let data: &[u8] = &[0,0,0,0,0,0,0,0,0,0,0,0];
-/// let compressed = compress_to_vec(data, CompressionLevel::Fastest);
+/// let compressed = compress_to_vec(data, CompressionLevel::Fastest).unwrap();
 /// ```
-pub fn compress_to_vec<R: Read>(source: R, level: CompressionLevel) -> Vec<u8> {
+pub fn compress_to_vec<R: Read>(
+    source: R,
+    level: CompressionLevel,
+) -> Result<Vec<u8>, EncodeError> {
     let mut vec = Vec::new();
-    compress(source, &mut vec, level);
-    vec
+    compress(source, &mut vec, level)?;
+    Ok(vec)
 }
 
 /// The compression mode used impacts the speed of compression,
 /// and resulting compression ratios. Faster compression will result
 /// in worse compression ratios, and vice versa.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum CompressionLevel {
     /// This level does not compress the data at all, and simply wraps
     /// it in a Zstandard frame.

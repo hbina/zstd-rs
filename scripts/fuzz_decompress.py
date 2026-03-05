@@ -115,7 +115,9 @@ class FuzzStats:
         print(f"  Runtime:             {runtime:.1f}s")
         print(f"  Rate:                {self.get_rate():.1f} iter/sec")
         print(f"  Data tested:         {self._format_size(self.total_bytes_tested)}")
-        print(f"  Data compressed:     {self._format_size(self.total_bytes_compressed)}")
+        print(
+            f"  Data compressed:     {self._format_size(self.total_bytes_compressed)}"
+        )
         print(f"  Avg compression:     {avg_ratio * 100:.1f}%")
         print(f"  Crashes:             {self.crashes}")
         print(f"{'=' * 70}")
@@ -155,7 +157,7 @@ def compute_hash(filepath: Path) -> str:
 
 
 def compare_files_3way(
-        original: Path, zstd_out: Path, ruzstd_out: Path
+    original: Path, zstd_out: Path, ruzstd_out: Path
 ) -> Tuple[bool, str]:
     for f in [original, zstd_out, ruzstd_out]:
         if not f.exists():
@@ -175,9 +177,15 @@ def compare_files_3way(
     ruzstd_hash = compute_hash(ruzstd_out)
 
     if orig_hash != zstd_hash:
-        return False, f"Hash mismatch: original({orig_hash[:16]}...) != zstd({zstd_hash[:16]}...)"
+        return (
+            False,
+            f"Hash mismatch: original({orig_hash[:16]}...) != zstd({zstd_hash[:16]}...)",
+        )
     if orig_hash != ruzstd_hash:
-        return False, f"Hash mismatch: original({orig_hash[:16]}...) != ruzstd({ruzstd_hash[:16]}...)"
+        return (
+            False,
+            f"Hash mismatch: original({orig_hash[:16]}...) != ruzstd({ruzstd_hash[:16]}...)",
+        )
 
     return True, "All files identical"
 
@@ -188,9 +196,16 @@ def compare_files_3way(
 
 
 def compress_with_zstd(
-        config: Config, input_path: Path, output_path: Path, level: int
+    config: Config, input_path: Path, output_path: Path, level: int
 ) -> bool:
-    cmd = [config.zstd_binary, "-f", f"-{level}", "-o", str(output_path), str(input_path)]
+    cmd = [
+        config.zstd_binary,
+        "-f",
+        f"-{level}",
+        "-o",
+        str(output_path),
+        str(input_path),
+    ]
     try:
         run_command(cmd)
         return True
@@ -228,13 +243,13 @@ def decompress_with_ruzstd(config: Config, input_path: Path, output_path: Path) 
 
 
 def save_crash_case(
-        config: Config,
-        iteration: int,
-        worker_id: int,
-        original_data: bytes,
-        compressed_data: bytes,
-        level: int,
-        error: str,
+    config: Config,
+    iteration: int,
+    worker_id: int,
+    original_data: bytes,
+    compressed_data: bytes,
+    level: int,
+    error: str,
 ) -> Path:
     """Save crash artifacts for debugging. Returns the crash directory."""
     config.crash_dir.mkdir(exist_ok=True)
@@ -289,7 +304,11 @@ def check_regressions(config: Config) -> bool:
     Returns True if all cases pass (all bugs fixed).
     """
     crash_dirs = (
-        sorted(d for d in config.crash_dir.iterdir() if d.is_dir() and d.name.startswith("crash_"))
+        sorted(
+            d
+            for d in config.crash_dir.iterdir()
+            if d.is_dir() and d.name.startswith("crash_")
+        )
         if config.crash_dir.exists()
         else []
     )
@@ -310,7 +329,9 @@ def check_regressions(config: Config) -> bool:
             input_file = crash_dir / "input.bin"
 
             if not compressed_file.exists() or not input_file.exists():
-                print(f"  [{i}/{len(crash_dirs)}] SKIP  {crash_dir.name}: missing compressed.zst or input.bin")
+                print(
+                    f"  [{i}/{len(crash_dirs)}] SKIP  {crash_dir.name}: missing compressed.zst or input.bin"
+                )
                 skipped += 1
                 continue
 
@@ -318,7 +339,9 @@ def check_regressions(config: Config) -> bool:
             out = worker_temp / f"reg_{i}_out.bin"
             try:
                 if not decompress_with_ruzstd(config, compressed_file, out):
-                    print(f"  [{i}/{len(crash_dirs)}] FAIL  {crash_dir.name}: ruzstd still fails to decompress")
+                    print(
+                        f"  [{i}/{len(crash_dirs)}] FAIL  {crash_dir.name}: ruzstd still fails to decompress"
+                    )
                     failed += 1
                     continue
 
@@ -330,7 +353,9 @@ def check_regressions(config: Config) -> bool:
                     )
                     failed += 1
                 else:
-                    print(f"  [{i}/{len(crash_dirs)}] FIXED {crash_dir.name}  ({len(expected)}B)")
+                    print(
+                        f"  [{i}/{len(crash_dirs)}] FIXED {crash_dir.name}  ({len(expected)}B)"
+                    )
                     passed += 1
             finally:
                 out.unlink(missing_ok=True)
@@ -347,11 +372,11 @@ def check_regressions(config: Config) -> bool:
 
 
 def _run_single_test(
-        config: Config,
-        worker_temp: Path,
-        data: bytes,
-        level: int,
-        prefix: str,
+    config: Config,
+    worker_temp: Path,
+    data: bytes,
+    level: int,
+    prefix: str,
 ) -> Tuple[bool, int, bytes, str]:
     """
     Compress data, then decompress with both zstd and ruzstd, and compare.
@@ -376,11 +401,21 @@ def _run_single_test(
             return True, compressed_size, b"", ""  # skip
 
         if not decompress_with_ruzstd(config, compressed, ruzstd_out):
-            return False, compressed_size, compressed.read_bytes(), "ruzstd decompression failed"
+            return (
+                False,
+                compressed_size,
+                compressed.read_bytes(),
+                "ruzstd decompression failed",
+            )
 
         success, message = compare_files_3way(original, zstd_out, ruzstd_out)
         if not success:
-            return False, compressed_size, compressed.read_bytes(), f"3-way comparison failed: {message}"
+            return (
+                False,
+                compressed_size,
+                compressed.read_bytes(),
+                f"3-way comparison failed: {message}",
+            )
 
         return True, compressed_size, b"", ""
 
@@ -395,11 +430,11 @@ def _run_single_test(
 
 
 def worker(
-        worker_id: int,
-        config: Config,
-        stop_event,
-        result_queue,
-        max_per_worker: Optional[int],
+    worker_id: int,
+    config: Config,
+    stop_event,
+    result_queue,
+    max_per_worker: Optional[int],
 ):
     """
     Worker process using hypothesis for property-based test generation.
@@ -425,7 +460,7 @@ def worker(
         level=st.just(1),
     )
     @settings(
-        max_examples=max_per_worker if max_per_worker else 10 ** 9,
+        max_examples=max_per_worker if max_per_worker else 10**9,
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )
@@ -454,7 +489,9 @@ def worker(
     finally:
         if last_failure[0] is not None:
             data, level, compressed_bytes, error = last_failure[0]
-            result_queue.put(("crash", worker_id, counter[0], data, level, compressed_bytes, error))
+            result_queue.put(
+                ("crash", worker_id, counter[0], data, level, compressed_bytes, error)
+            )
             stop_event.set()
         shutil.rmtree(worker_temp, ignore_errors=True)
 
@@ -493,7 +530,9 @@ def check_prerequisites(config: Config) -> bool:
         return False
 
     try:
-        result = subprocess.run(["cargo", "--version"], capture_output=True, check=False)
+        result = subprocess.run(
+            ["cargo", "--version"], capture_output=True, check=False
+        )
         version = result.stdout.decode().strip() if result.stdout else "version unknown"
         print(f"  Found cargo: {version}")
     except FileNotFoundError:
@@ -502,6 +541,7 @@ def check_prerequisites(config: Config) -> bool:
         return False
 
     import hypothesis
+
     print(f"  Found hypothesis: {hypothesis.__version__}")
 
     print("  Prerequisites satisfied")
@@ -568,8 +608,8 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
 
                 now = time.time()
                 if config.verbose or (
-                        stats.iterations % config.report_interval == 0
-                        and now - last_report_time >= 1.0
+                    stats.iterations % config.report_interval == 0
+                    and now - last_report_time >= 1.0
                 ):
                     ratio = compressed_size / data_size * 100 if data_size > 0 else 0
                     print(
@@ -592,7 +632,9 @@ def fuzz_loop(config: Config, max_iterations: Optional[int] = None) -> bool:
                 print(f"  Data size:    {len(data)} bytes")
                 print(f"  Level:        {level}")
 
-                save_crash_case(config, iteration, worker_id, data, compressed_bytes, level, error)
+                save_crash_case(
+                    config, iteration, worker_id, data, compressed_bytes, level, error
+                )
                 print(f"\nFuzzing stopped due to bug discovery")
                 break
 
@@ -640,7 +682,8 @@ Examples:
     )
 
     parser.add_argument(
-        "-i", "--iterations",
+        "-i",
+        "--iterations",
         type=int,
         default=None,
         help="Maximum total iterations across all workers (default: unlimited)",
@@ -664,7 +707,8 @@ Examples:
         help="Maximum file size (supports K/M/G suffix, default: 10M)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose output",
     )
@@ -689,7 +733,7 @@ Examples:
 
     def parse_size(size_str: str) -> int:
         size_str = size_str.upper().strip()
-        multipliers = {"K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}
+        multipliers = {"K": 1024, "M": 1024**2, "G": 1024**3}
         for suffix, mult in multipliers.items():
             if size_str.endswith(suffix):
                 return int(float(size_str[:-1]) * mult)

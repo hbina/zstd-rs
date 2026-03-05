@@ -8,6 +8,7 @@ and verifies round-trip integrity.
 Usage:
     python3 scripts/regression_compress.py
 """
+
 import subprocess
 import sys
 import tempfile
@@ -27,15 +28,28 @@ def _run_single_test(data: bytes, level: int, label: str) -> bool:
         decompressed_path = tmpdir / "decompressed.bin"
         input_path.write_bytes(data)
         r = subprocess.run(
-            [str(RUZSTD_BINARY), "compress", "--level", str(level),
-             str(input_path), str(compressed_path)],
+            [
+                str(RUZSTD_BINARY),
+                "compress",
+                "--level",
+                str(level),
+                str(input_path),
+                str(compressed_path),
+            ],
             capture_output=True,
         )
         if r.returncode != 0:
             print(f"FAIL {label}: compress failed: {r.stderr.decode()[:200]}")
             return False
         r = subprocess.run(
-            [ZSTD_BINARY, "-d", "-f", "-o", str(decompressed_path), str(compressed_path)],
+            [
+                ZSTD_BINARY,
+                "-d",
+                "-f",
+                "-o",
+                str(decompressed_path),
+                str(compressed_path),
+            ],
             capture_output=True,
         )
         if r.returncode != 0:
@@ -43,7 +57,9 @@ def _run_single_test(data: bytes, level: int, label: str) -> bool:
             return False
         result = decompressed_path.read_bytes()
         if result != data:
-            print(f"FAIL {label}: mismatch: input={len(data)} decompressed={len(result)}")
+            print(
+                f"FAIL {label}: mismatch: input={len(data)} decompressed={len(result)}"
+            )
             return False
         print(f"OK   {label}")
         return True
@@ -52,6 +68,7 @@ def _run_single_test(data: bytes, level: int, label: str) -> bool:
 # ---------------------------------------------------------------------------
 # Regression tests
 # ---------------------------------------------------------------------------
+
 
 def test_regression_encode_match_len_code52():
     """
@@ -65,8 +82,10 @@ def test_regression_encode_match_len_code52():
     # We cannot directly trigger this via the CLI (match generator can't produce such matches),
     # but we verify the corrected function is consistent with the decoder for the full range.
     # This test exercises large repeating blocks to stress the match finder.
-    data = b'\xAA' * 131072 * 2
-    return _run_single_test(data, level=1, label="match_len_code52_stress_repeating_260KB")
+    data = b"\xaa" * 131072 * 2
+    return _run_single_test(
+        data, level=1, label="match_len_code52_stress_repeating_260KB"
+    )
 
 
 def test_regression_encode_seqnum_byte_order():
@@ -83,7 +102,9 @@ def test_regression_encode_seqnum_byte_order():
     """
     # Stress test with many sequences (short repeated pattern so matches are short)
     # This produces many sequences but still well under 32512 per block.
-    data = bytes(range(256)) * 512  # 128KB unique patterns, compresses with many short matches
+    data = (
+        bytes(range(256)) * 512
+    )  # 128KB unique patterns, compresses with many short matches
     return _run_single_test(data, level=1, label="seqnum_byte_order_stress_128KB")
 
 
@@ -94,7 +115,7 @@ def test_regression_write_bits_assertion():
     silently truncating values that don't fit. The correct check is `bits < (1 << num_bits)`.
     This was strengthened to catch potential encoding bugs early in debug builds.
     """
-    data = b'\x42' * 10000
+    data = b"\x42" * 10000
     return _run_single_test(data, level=1, label="write_bits_assertion_simple")
 
 
@@ -110,16 +131,19 @@ def test_regression_interop_fuzz_target():
     """
     # Single-byte and two-byte inputs that previously triggered fuzz target failures
     ok = True
-    ok &= _run_single_test(b'\x00', level=0, label="interop_single_byte_0x00")
-    ok &= _run_single_test(b'\x00\xda', level=0, label="interop_two_bytes_0x00_0xda")
-    ok &= _run_single_test(b'\x00', level=1, label="interop_single_byte_0x00_level1")
-    ok &= _run_single_test(b'\x00\xda', level=1, label="interop_two_bytes_0x00_0xda_level1")
+    ok &= _run_single_test(b"\x00", level=0, label="interop_single_byte_0x00")
+    ok &= _run_single_test(b"\x00\xda", level=0, label="interop_two_bytes_0x00_0xda")
+    ok &= _run_single_test(b"\x00", level=1, label="interop_single_byte_0x00_level1")
+    ok &= _run_single_test(
+        b"\x00\xda", level=1, label="interop_two_bytes_0x00_0xda_level1"
+    )
     return ok
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     if not RUZSTD_BINARY.exists():
@@ -145,7 +169,7 @@ def main() -> int:
             print(f"EXCEPTION in {test.__name__}: {e}")
             failed += 1
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Results: {passed} passed, {failed} failed")
     return 0 if failed == 0 else 1
 

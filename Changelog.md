@@ -18,6 +18,7 @@ This document records the changes made between versions, starting with version 0
 * Compression fuzzer (`scripts/fuzz_compress.py`) now defaults to level 1 (Fastest) with 1 KB minimum input size
 * Add `scripts/regression_compress.py` for compression regression tests
 * Add `docs/compression_fuzzing_findings.md` documenting all findings
+* `StreamingDecoder` now transparently handles multiple concatenated zstd frames and skippable frames, matching RFC 8878 requirements
 * Introduce the `rust-version` field
 
 # After 0.8.1

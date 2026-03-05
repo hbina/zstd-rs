@@ -282,6 +282,7 @@ mod tests {
     use super::FrameCompressor;
     use crate::common::MAGIC_NUM;
     use crate::decoding::FrameDecoder;
+    #[cfg(feature = "std")]
     use crate::encoding::EncodeError;
     use alloc::vec::Vec;
 

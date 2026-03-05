@@ -582,6 +582,77 @@ pub mod dict_test;
 pub mod encode_corpus;
 pub mod fuzz_regressions;
 
+#[test]
+fn streaming_decoder_multi_frame() {
+    use crate::decoding::StreamingDecoder;
+    use crate::io::Read;
+
+    let skip_frame = |input: &mut Vec<u8>, length: usize| {
+        input.extend_from_slice(&0x184D2A50u32.to_le_bytes());
+        input.extend_from_slice(&(length as u32).to_le_bytes());
+        input.resize(input.len() + length, 0);
+    };
+
+    // Two concatenated real frames.
+    {
+        let mut input = Vec::new();
+        let mut original = Vec::new();
+        input.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089.zst"));
+        original.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089"));
+        input.extend_from_slice(include_bytes!("../../decodecorpus_files/z000090.zst"));
+        original.extend_from_slice(include_bytes!("../../decodecorpus_files/z000090"));
+
+        let mut decoder = StreamingDecoder::new(input.as_slice()).unwrap();
+        let mut output = Vec::new();
+        Read::read_to_end(&mut decoder, &mut output).unwrap();
+        assert_eq!(output, original);
+    }
+
+    // Skippable frame at the start, then real frames.
+    {
+        let mut input = Vec::new();
+        let mut original = Vec::new();
+        skip_frame(&mut input, 300);
+        input.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089.zst"));
+        original.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089"));
+
+        let mut decoder = StreamingDecoder::new(input.as_slice()).unwrap();
+        let mut output = Vec::new();
+        Read::read_to_end(&mut decoder, &mut output).unwrap();
+        assert_eq!(output, original);
+    }
+
+    // Skippable frames interleaved with real frames, and at end.
+    {
+        let mut input = Vec::new();
+        let mut original = Vec::new();
+        skip_frame(&mut input, 300);
+        input.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089.zst"));
+        original.extend_from_slice(include_bytes!("../../decodecorpus_files/z000089"));
+        skip_frame(&mut input, 400);
+        input.extend_from_slice(include_bytes!("../../decodecorpus_files/z000090.zst"));
+        original.extend_from_slice(include_bytes!("../../decodecorpus_files/z000090"));
+        skip_frame(&mut input, 500);
+
+        let mut decoder = StreamingDecoder::new(input.as_slice()).unwrap();
+        let mut output = Vec::new();
+        Read::read_to_end(&mut decoder, &mut output).unwrap();
+        assert_eq!(output, original);
+    }
+
+    // Stream containing only skippable frames produces empty output.
+    {
+        let mut input = Vec::new();
+        skip_frame(&mut input, 100);
+        skip_frame(&mut input, 200);
+
+        let mut decoder = StreamingDecoder::new(input.as_slice()).unwrap();
+        let mut output = Vec::new();
+        Read::read_to_end(&mut decoder, &mut output).unwrap();
+        assert!(output.is_empty());
+    }
+}
+
 #[cfg(feature = "std")]
 #[test]
 fn verbose_disabled() {

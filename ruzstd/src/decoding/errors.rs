@@ -491,6 +491,11 @@ pub enum FrameDecoderError {
     FailedToReadBlockHeader(BlockHeaderReadError),
     FailedToReadBlockBody(DecodeBlockContentError),
     FailedToReadChecksum(Error),
+    #[cfg(feature = "hash")]
+    ChecksumMismatch {
+        expected: u32,
+        got: u32,
+    },
     NotYetInitialized,
     FailedToInitialize(FrameHeaderError),
     FailedToDrainDecodebuffer(Error),
@@ -549,6 +554,13 @@ impl core::fmt::Display for FrameDecoderError {
             }
             FrameDecoderError::FailedToReadChecksum(e) => {
                 write!(f, "Failed to read checksum: {e}")
+            }
+            #[cfg(feature = "hash")]
+            FrameDecoderError::ChecksumMismatch { expected, got } => {
+                write!(
+                    f,
+                    "Checksum mismatch: expected 0x{expected:08X}, got 0x{got:08X}"
+                )
             }
             FrameDecoderError::NotYetInitialized => {
                 write!(f, "Decoder must initialized or reset before using it",)

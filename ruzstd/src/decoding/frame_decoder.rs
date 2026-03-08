@@ -226,7 +226,7 @@ impl FrameDecoder {
     }
 
     /// Returns the checksum that was calculated while decoding.
-    /// Only a sensible value after all decoded bytes have been collected/read from the FrameDecoder
+    /// Only a sensible value after all blocks have been decoded (i.e. after [`decode_blocks`] returns `true`).
     #[cfg(feature = "hash")]
     pub fn get_calculated_checksum(&self) -> Option<u32> {
         use core::hash::Hasher;
@@ -322,6 +322,18 @@ impl FrameDecoder {
                     state.bytes_read_counter += 4;
                     let chksum = u32::from_le_bytes(chksum);
                     state.check_sum = Some(chksum);
+                    #[cfg(feature = "hash")]
+                    {
+                        use core::hash::Hasher;
+                        let calculated =
+                            state.decoder_scratch.buffer.hash.finish() as u32;
+                        if calculated != chksum {
+                            return Err(err::ChecksumMismatch {
+                                expected: chksum,
+                                got: calculated,
+                            });
+                        }
+                    }
                 }
                 break;
             }
@@ -438,6 +450,18 @@ impl FrameDecoder {
                         state.bytes_read_counter += 4;
                         let chksum = u32::from_le_bytes(chksum);
                         state.check_sum = Some(chksum);
+                        #[cfg(feature = "hash")]
+                        {
+                            use core::hash::Hasher;
+                            let calculated =
+                                state.decoder_scratch.buffer.hash.finish() as u32;
+                            if calculated != chksum {
+                                return Err(err::ChecksumMismatch {
+                                    expected: chksum,
+                                    got: calculated,
+                                });
+                            }
+                        }
                     }
                     return Ok((4, 0));
                 }
@@ -475,6 +499,18 @@ impl FrameDecoder {
                                 state.bytes_read_counter += 4;
                                 let chksum = u32::from_le_bytes(chksum);
                                 state.check_sum = Some(chksum);
+                                #[cfg(feature = "hash")]
+                                {
+                                    use core::hash::Hasher;
+                                    let calculated =
+                                        state.decoder_scratch.buffer.hash.finish() as u32;
+                                    if calculated != chksum {
+                                        return Err(err::ChecksumMismatch {
+                                            expected: chksum,
+                                            got: calculated,
+                                        });
+                                    }
+                                }
                             }
                         }
                         break;

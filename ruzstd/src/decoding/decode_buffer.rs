@@ -62,6 +62,8 @@ impl DecodeBuffer {
     pub fn push(&mut self, data: &[u8]) {
         self.buffer.extend(data);
         self.total_output_counter += data.len() as u64;
+        #[cfg(feature = "hash")]
+        self.hash.write(data);
     }
 
     pub fn repeat(&mut self, offset: usize, match_length: usize) -> Result<(), DecodeBufferError> {
@@ -78,6 +80,14 @@ impl DecodeBuffer {
                 self.repeat_in_chunks(offset, match_length, start_idx);
             } else {
                 // can just copy parts of the existing buffer
+                // Hash the source bytes before the copy (same bytes, available in buffer now).
+                #[cfg(feature = "hash")]
+                Self::hash_from_slices(
+                    &mut self.hash,
+                    self.buffer.as_slices(),
+                    start_idx,
+                    match_length,
+                );
                 // SAFETY: Requirements checked:
                 // 1. start_idx + match_length must be <= self.buffer.len()
                 //      We know that:
@@ -106,6 +116,15 @@ impl DecodeBuffer {
         // Each time we copy a chunk we have a repetiton of length 'offset', so we can copy offset * iteration many bytes from start_idx
         while copied_counter_left > 0 {
             let chunksize = usize::min(offset, copied_counter_left);
+
+            // Hash the source bytes before the copy (they are already in the buffer at start_idx).
+            #[cfg(feature = "hash")]
+            Self::hash_from_slices(
+                &mut self.hash,
+                self.buffer.as_slices(),
+                start_idx,
+                chunksize,
+            );
 
             // SAFETY: Requirements checked:
             // 1. start_idx + chunksize must be <= self.buffer.len()
@@ -148,6 +167,8 @@ impl DecodeBuffer {
             if bytes_from_dict < match_length {
                 let dict_slice = &self.dict_content[self.dict_content.len() - bytes_from_dict..];
                 self.buffer.extend(dict_slice);
+                #[cfg(feature = "hash")]
+                self.hash.write(dict_slice);
 
                 self.total_output_counter += bytes_from_dict as u64;
                 return self.repeat(self.buffer.len(), match_length - bytes_from_dict);
@@ -156,6 +177,8 @@ impl DecodeBuffer {
                 let high = low + match_length;
                 let dict_slice = &self.dict_content[low..high];
                 self.buffer.extend(dict_slice);
+                #[cfg(feature = "hash")]
+                self.hash.write(dict_slice);
             }
             Ok(())
         } else {
@@ -163,6 +186,28 @@ impl DecodeBuffer {
                 offset,
                 buf_len: self.buffer.len(),
             })
+        }
+    }
+
+    /// Hash `len` bytes from the logical buffer starting at `start`, feeding them to `hash`.
+    /// The buffer is provided as the two contiguous slices returned by `as_slices()`.
+    #[cfg(feature = "hash")]
+    fn hash_from_slices(
+        hash: &mut twox_hash::XxHash64,
+        (s1, s2): (&[u8], &[u8]),
+        start: usize,
+        len: usize,
+    ) {
+        let end = start + len;
+        let s1_start = start.min(s1.len());
+        let s1_end = end.min(s1.len());
+        if s1_end > s1_start {
+            hash.write(&s1[s1_start..s1_end]);
+        }
+        let s2_start = start.saturating_sub(s1.len());
+        let s2_end = end.saturating_sub(s1.len()).min(s2.len());
+        if s2_end > s2_start {
+            hash.write(&s2[s2_start..s2_end]);
         }
     }
 
@@ -208,12 +253,6 @@ impl DecodeBuffer {
     /// drain the buffer completely
     pub fn drain(&mut self) -> Vec<u8> {
         let (slice1, slice2) = self.buffer.as_slices();
-        #[cfg(feature = "hash")]
-        {
-            self.hash.write(slice1);
-            self.hash.write(slice2);
-        }
-
         let mut vec = Vec::with_capacity(slice1.len() + slice2.len());
         vec.extend_from_slice(slice1);
         vec.extend_from_slice(slice2);
@@ -274,8 +313,6 @@ impl DecodeBuffer {
 
         if n1 != 0 {
             let (written1, res1) = write_bytes(&slice1[..n1]);
-            #[cfg(feature = "hash")]
-            self.hash.write(&slice1[..written1]);
             drain_guard.amount += written1;
 
             // Apparently this is what clippy thinks is the best way of expressing this
@@ -285,8 +322,6 @@ impl DecodeBuffer {
             // Partial writes SHOULD never happen without res1 being an error, but lets just protect against it anyways.
             if written1 == n1 && n2 != 0 {
                 let (written2, res2) = write_bytes(&slice2[..n2]);
-                #[cfg(feature = "hash")]
-                self.hash.write(&slice2[..written2]);
                 drain_guard.amount += written2;
 
                 // Apparently this is what clippy thinks is the best way of expressing this

@@ -416,8 +416,8 @@ def worker(
     last_failure = [None]  # (data, level, compressed_bytes, error)
     is_shrinking = [False]
 
-    # Cap max_size: shrinking very large binaries is extremely slow.
-    hyp_max_size = min(config.max_size, 1 * 1024 * 1024)
+    # Use the configured max_size directly.
+    hyp_max_size = config.max_size
 
     @given(
         data=st.binary(min_size=config.min_size, max_size=hyp_max_size),

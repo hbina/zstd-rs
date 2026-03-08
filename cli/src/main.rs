@@ -82,7 +82,13 @@ fn main() -> color_eyre::Result<()> {
             output_file,
             level,
         } => {
-            let output_file = output_file.unwrap_or_else(|| add_extension(&input_file, ".zst"));
+            let output_file = output_file.unwrap_or_else(|| {
+                if input_file == Path::new("-") {
+                    Path::new("-").to_path_buf()
+                } else {
+                    add_extension(&input_file, ".zst")
+                }
+            });
             compress(input_file, output_file, level)?;
         }
         Commands::Decompress {
@@ -113,21 +119,46 @@ fn compress(input: PathBuf, output: PathBuf, level: u8) -> color_eyre::Result<()
             unimplemented!("unsupported compression level: {}", level);
         }
     };
-    let source_file = File::open(input).wrap_err("failed to open input file")?;
-    let source_size = source_file.metadata()?.len() as usize;
-    let buffered_source = BufReader::new(source_file);
-    let encoder_input = ProgressMonitor::new(buffered_source, source_size);
-    let output: File = File::create(output).wrap_err("failed to open output file for writing")?;
 
-    ruzstd::encoding::compress(encoder_input, &output, compression_level)
-        .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
-    let compressed_size = output.metadata()?.len();
-    let compression_ratio = compressed_size as f64 / source_size as f64 * 100.0;
-    info!(
-        "{} ——> {} ({compression_ratio:.2}%)",
-        fmt_size(source_size as f64),
-        fmt_size(compressed_size as f64)
-    );
+    let use_stdin = input == Path::new("-");
+    let use_stdout = output == Path::new("-");
+
+    if use_stdin {
+        let stdin = std::io::stdin();
+        let buffered_source = BufReader::new(stdin.lock());
+        if use_stdout {
+            let stdout = std::io::stdout();
+            ruzstd::encoding::compress(buffered_source, stdout.lock(), compression_level)
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
+        } else {
+            let output_file =
+                File::create(&output).wrap_err("failed to open output file for writing")?;
+            ruzstd::encoding::compress(buffered_source, &output_file, compression_level)
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
+        }
+    } else {
+        let source_file = File::open(input).wrap_err("failed to open input file")?;
+        let source_size = source_file.metadata()?.len() as usize;
+        let buffered_source = BufReader::new(source_file);
+        let encoder_input = ProgressMonitor::new(buffered_source, source_size);
+        if use_stdout {
+            let stdout = std::io::stdout();
+            ruzstd::encoding::compress(encoder_input, stdout.lock(), compression_level)
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
+        } else {
+            let output_file =
+                File::create(&output).wrap_err("failed to open output file for writing")?;
+            ruzstd::encoding::compress(encoder_input, &output_file, compression_level)
+                .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
+            let compressed_size = output_file.metadata()?.len();
+            let compression_ratio = compressed_size as f64 / source_size as f64 * 100.0;
+            info!(
+                "{} ——> {} ({compression_ratio:.2}%)",
+                fmt_size(source_size as f64),
+                fmt_size(compressed_size as f64)
+            );
+        }
+    }
     Ok(())
 }
 

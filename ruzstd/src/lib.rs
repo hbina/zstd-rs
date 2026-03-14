@@ -33,6 +33,8 @@ macro_rules! vprintln {
 }
 
 mod bit_io;
+#[cfg(feature = "bench_exports")]
+pub use bit_io::BitReader;
 mod common;
 pub mod decoding;
 #[cfg(feature = "dict_builder")]

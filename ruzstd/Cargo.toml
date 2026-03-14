@@ -33,6 +33,7 @@ zstd = "0.13.2"
 default = ["hash", "std"]
 dict_builder = ["std", "dep:fastrand"]
 hash = ["dep:twox-hash"]
+bench_exports = []
 fuzz_exports = []
 std = []
 
